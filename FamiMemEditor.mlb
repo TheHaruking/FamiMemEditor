@@ -1,0 +1,175 @@
+P:0000:RESET:// $8000-BFFF : PRG-ROM (LOW) 領域\n// $C000-FFFF : PRG-ROM (HIGH) 領域\n///////////////////////////////////////////\n// 変数\n 処理で使用\n// 0:0000, 1:6000, 2:8000\n ボタン\n ルーチンで使用\n 8 bit の値を渡すのに使用\n 汎用\n 16 bit のアドレスを渡すのに使用\n 16 bit のアドレスを渡すのに使用\n// 定数\n ボタン (一般のファミコンゲームとは逆になっているが、こちらが好み。)\n 上4行空けてカーソルを表示する際のオフセット値\n "0000:" の分を空けてカーソルを表示する際のオフセット値\n///////////////////////////////////////////\n macro\n///////////////////////////////////////////\n// 関数\n\n 電源投入後最初に実行\n\n IRQ禁止セット・BDCクリア
+P:0002::\n スタック初期化
+P:0005::\n PPU初期化
+P:0007:: NMI を無効化
+P:000A:: 描画を無効化
+P:000D:: DMC IRQ有効ビット をクリア
+P:0010::\n APU ﾌﾚｰﾑｶｳﾝﾀｰIRQ禁止ビット セット
+P:0015::	\n メモリ初期化
+P:0032::\n VBlank 待機
+P:003C::\n パレット読込
+P:0053::\n スクロール設定\n X座標
+P:0058:: Y座標
+P:005D::\n 0番スプライト カーソル\n キャラ番号
+P:0065::\n PPU 有効化・NMI はそのまま\n 赤 緑 青 SP BG cS cB 色
+P:006A::lda #%10000000 ; NMI ? SPsize BGbase SPbase BG縦横 MainScreen(2bit)\nsta $2000
+P:0070:MainLoop:\n メインループ
+P:0073::\n 処理
+P:0079::\n テスト
+P:007F::\n 描画	
+P:008C:SelectRoutine:\n ボタンの組み合わせによって、実行するルーチンを分岐させる\n\n 離されていたら padMode をリセット
+P:0094:: _padMode に値をセット\n 十字キー : 5, A B select start : 1 2 3 4
+P:00AF::\n padMode に応じて分岐
+P:00B1:: dw 配列を読むので 2 倍しておく
+P:00C1:DATA_SelectRoutine: A:1, B:2, start:3, select:4, 十字キー:5
+P:00D1:DATA_SelectRoutine_func:    0 1 2 3 \n0 : - A B -\n4 : e - - -     \n8 : S - - -   \nC : - - - -  
+P:00DD:GetJoyPad:\n///////////////////////////////////////////\n コントローラーの情報を取得\n	pad1+0 : 現在の状態\n	pad1+1 : 押した瞬間\n	pad1+2 : 離した瞬間\n	pad1+3 : 1フレーム前 \n\n 1フレーム前のボタン情報を保存
+P:00E5::\n ボタン取得 [A B select start ↑ ↓ ← →]
+P:00F1:: 1P
+P:00F7:: 2P
+P:0100::\n ボタン計算 (押した瞬間・離した瞬間 の算出)
+P:0118:: インデックス計算
+P:011E:EditHex:\n A or B が押した瞬間でなければ Return
+P:0125::\n 右回り値を取得 (異常値時は Return)
+P:0132::\n 0 - 15 を取得 (初回時 上位4bit化)\n 2
+P:0133:: 3
+P:0135:: 2
+P:0137:: 2
+P:0139:: 2
+P:013A:: 2
+P:013C:: これでも OK\n lda _pad1+1	; 3\n lsr		; 2\n lsr		; 2\n tya		; 2\n rol		; 2
+P:013E:: 初回
+P:0145::\n カーソル選択中アドレスに書き込む
+P:0153:: 初回
+P:015A:: 2回目
+P:0165:: 2回目
+P:016E:DATA_Direction2Hex
+P:017E:MoveCursor:_x, _y の変更
+P:01A2::\n _is_Hex_Changing を初期化
+P:01AD:CalcCursor:\n x 正規化
+P:01BF::\n y 正規化
+P:01C5::\n y, x カーソル座標 算出
+P:01CB:: 表示調整オフセットを足す
+P:01CF:: スプライトは下に 1pxcel ずれる。さらに調整
+P:01E1::\n カーソル処理\n Y座標
+P:01E6:: X座標
+P:01EB::\n カレントアドレス計算
+P:01F3:: _y * 4
+P:01F7:: + _x
+P:0208:ChangeBaseAddr: base アドレスの変更
+P:023C:: _BaseOfsIdx < 3 のときスキップ
+P:0252:: Base を既定アドレスに変更
+P:025F:DATA_ChangeBaseAddr: 下バイトは全部 $00 なので、上だけで良い.
+P:0262:Exec: 実行\n\n	lda _pad1+1\n	and #pad_select\n\n A,X,Y のクリア
+P:026E:nonefunc
+P:026F:DrawInitialize: 描画関係\n\n 事前描画 (タイトル)
+P:0279:: 行
+P:0282:: 5 行分
+P:0289:BG_DATA1:	BG_DATAX: .hex 2020202020202020202020202020202020202020202020202020202020202020
+P:02A9:BG_DATA2
+P:02C9:BG_DATA3
+P:02E9:BG_DATA4:	BG_DATA4: .hex 5354415254203AB9F62D26F82DBCC42020202020202020202020202020202020
+P:0309:BG_DATA5
+P:0329::	BG_DATA2: .db "A : Move Cursor                 "\n	BG_DATA3: .db "B : Change Addr Page            "\n	BG_DATA4: .db "start  : Copy & Paste           "\n	BG_DATA5: .db "select : Exec (Addr Page)       "\n\n 描画
+P:035F::\n メモリの後始末
+P:0374:DrawHex16Lines:\n 描画1,2 (8行x2)\n BufDraw_addr_hex_32x8 での読みこみ元
+P:037C:: Draw8Lines での書き込み先 (5行目)
+P:0386::\n 準備 : 4バイトを表示 x 8行\n 1文字分右にずらす
+P:038E:: _DSTA_ に _base を設定済み
+P:0391::\n 描画\n #$2081 [2回目:#$2181]
+P:03A7::\n BufDraw_addr_hex_32x8 でのバイト読みこみ元をインクリメント
+P:03AE::\n Draw8Lines で書き込む Nametable 上位バイトを inc し、 +$100 する
+P:03B4:memset:///////////////////////////////////////////\n 汎用関数\n _ADDR_ : 対象アドレス\n _N_ : 値\n _N1_ ; サイズ
+P:03C4:add_16_ADDR: _ADDR_ : 対象\n _N_ : 足す数
+P:03D0:add_16_DSTA: _ADDR_ : \n _N_ : 足す数
+P:03DC:DrawScrollZero: X座標
+P:03E1:: Y座標
+P:03E7:BufDraw_addr_hex_32x8: _ADDR_ : 対象バッファ\n _DSTA_ : ソースメモリ\n 破壊 : _N_
+P:03FB::(+5)
+P:03FE::(+12)
+P:0423:BufDraw_addr_2bytes: _ADDR_ : 書き込みアドレス (!! 返却 : +5 !!)\n _DSTA_ : 直接読みこみ文字列化する
+P:0441:: ':'
+P:0451:BufDraw_hex_4bytes: 4バイト分実行 (00 00 00 00 )\n _ADDR_ : 書き込み先アドレス (!! 返却 : +12 !!)\n _DSTA_ : 読みこみアドレス
+P:0470:bin2hex: 説明 : _N_ の値を ASCII 2バイトに変換し、指定アドレスに書き込む。\n _ADDR_ : 指定アドレス\n _N_  : 値 
+P:048F:DATA_BIN2HEX
+P:049F:Draw8Lines:///////////////////////////////////////////\n _ADDR_ : NAMETABLE\n バランス ver\n MEM_BG の インデックス\n 最大速度ver
+P:0AAA:DrawXLines: _ADDR_ : NameTable\n _DSTA_ : MEM_BG\n _N_    : 行数 (最大:約6行)
+P:0ABA:: MEM_BG の インデックス
+P:0B8A:Draw1Sprite: _N_ : spr id
+P:0B93:: インデックスを計算
+P:0B94:: Y座標
+P:0B9A:: キャラ番号
+P:0BA0:: 反転・優先順位
+P:0BA6:: X座標
+P:0BAF:DrawAllSprites
+P:0BB5:One2Handlet:///////////////////////////////////////////\n https://www.wizforest.com/tech/Z80vs6502/;p1#LoopAdd
+P:0BBD:: 2
+P:0BBF:: 3
+P:0BC1:: 2
+P:0BC3:: 2
+P:0BC4:: 2
+P:0BC5:: 3
+P:0BC7:: 3 / 2
+P:0BC9:: 2
+P:0BCA:: 2
+P:0BCB:: 5
+P:0BCD:: 3 / 2
+P:0BCF:: 3
+P:0BD1:: 3
+P:0BD4:NMI:///////////////////////////////////////////
+P:0BD9::\n 処理
+P:0BE0:BREAK:///////////////////////////////////////////
+P:0BE5::\n ■ rti 戻り先補正\n BREAK 命令の戻りアドレスは +1 される.\n 補正のため, スタック5番目のPC下位バイトに対し dec する.\n 参考図 : [ y, x, a, P, <PC0>, PC1 ]
+P:0BF4:://////////////////////////////////////////\n パレットはここに配置しておく
+P:3FD0:PALLET
+R:00D0:_y
+R:00D1:_y_View
+R:00D2:_x
+R:00D3:_x_View
+R:00D4:_base
+R:00D5:_base1
+R:00D6:_curaddr
+R:00D7:_curaddr1
+R:00D8:_BaseOfsIdx
+R:00D9:_padMode
+R:00DA:_is_Hex_Changing
+R:00DB:_is_need_AllDraw
+R:00DC:_test
+R:00DD:_test1
+R:00DE:_reserve
+R:00DF:_reserve1
+R:00F0:_pad1
+R:00F1:_pad11
+R:00F2:_pad12
+R:00F3:_pad13
+R:00F4:_pad2
+R:00F5:_pad21
+R:00F6:_pad22
+R:00F7:_pad23
+R:00F8:_N_
+R:00F9:_N1_
+R:00FA:_MM_
+R:00FB:_MM1_
+R:00FC:_ADDR_
+R:00FD:_ADDR1_
+R:00FE:_DSTA_
+R:00FF:_DSTA1_
+R:0200:MEM_SP
+R:0300:MEM_BG
+W:0000:SRAM
+R:0100:i
+G:C000:X_OFS
+G:C000:Y_OFS
+G:C000:pad_A
+G:C000:pad_B
+G:C000:pad_Down
+G:C000:pad_Left
+G:C000:pad_Right
+G:C000:pad_Up
+G:C000:pad_select
+G:C000:pad_start
+G:CB91:N
+G:CBEE:ADDR
+G:CBEE:DSTA
+G:CBEE:X
+G:CBEE:Y
