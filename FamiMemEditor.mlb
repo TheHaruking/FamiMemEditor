@@ -1,4 +1,4 @@
-P:0000:RESET:// $8000-BFFF : PRG-ROM (LOW) 領域\n// $C000-FFFF : PRG-ROM (HIGH) 領域\n///////////////////////////////////////////\n// 変数\n 処理で使用\n// 0:0000, 1:6000, 2:8000\n ボタン\n ルーチンで使用\n 8 bit の値を渡すのに使用\n 汎用\n 16 bit のアドレスを渡すのに使用\n 16 bit のアドレスを渡すのに使用\n// 定数\n ボタン (一般のファミコンゲームとは逆になっているが、こちらが好み。)\n 上4行空けてカーソルを表示する際のオフセット値\n "0000:" の分を空けてカーソルを表示する際のオフセット値\n///////////////////////////////////////////\n macro\n///////////////////////////////////////////\n// 関数\n\n 電源投入後最初に実行\n\n IRQ禁止セット・BDCクリア
+P:0000:RESET:// $8000-BFFF : PRG-ROM (LOW) 領域\n// $C000-FFFF : PRG-ROM (HIGH) 領域\n///////////////////////////////////////////\n■ 変数\n $0000\n// 0:0000, 1:6000, 2:8000\n ボタン\n ルーチンで使用\n 8 bit の値を渡すのに使用\n 汎用\n 16 bit のアドレスを渡すのに使用\n 16 bit のアドレスを渡すのに使用\n $0200 : スプライトバッファ\n $0300 : BGバッファ\n $0400\n $0500\n $0600\n $0700\n■ 定数\n ボタン (一般のファミコンゲームとは逆になっているが、こちらが好み。)\n 上4行空けてカーソルを表示する際のオフセット値\n "0000:" の分を空けてカーソルを表示する際のオフセット値\n///////////////////////////////////////////\n macro\n///////////////////////////////////////////\n// 関数\n\n 電源投入後最初に実行\n\n IRQ禁止セット・BDCクリア
 P:0002::\n スタック初期化
 P:0005::\n PPU初期化
 P:0007:: NMI を無効化
@@ -64,66 +64,65 @@ P:0262:Exec: 実行\n\n	lda _pad1+1\n	and #pad_select\n\n A,X,Y のクリア
 P:026E:nonefunc
 P:026F:DrawInitialize: 描画関係\n\n 事前描画 (タイトル)
 P:029F::\n 描画
-P:02D7::\n メモリの後始末
-P:02DF:: アドレスではなく、値として使用
-P:02E3:: 256
-P:02EB:DATA_TITLE: memcpy32 に渡す値
-P:030C:DATA_HELP
-P:034D::.hex 5354415254203AB9F62D26F82DBCC42020202020202020202020202020202020
-P:038D:DATA_Register
-P:040E:DrawHex16Lines: #$2081, _base\n 1つ右に描画
-P:0421:: 次のアドレス\n #$2181
-P:042A:: #$2181, _base+$20
-P:042E:DrawHex8Lines: _ADDR_ : Nametable\n _SRCA_ : _base\n _MM_ : 破壊
-P:043A:: 退避
-P:0442:: 準備
-P:044A::	lda _base	; ★ 開始アドレス\n	sta _SRCA_\n	lda _base+1\n	sta _SRCA_+1
-P:044D:: 描画\n ★ #$2081 [2回目:#$2181]
-P:046D:memset:///////////////////////////////////////////\n 汎用関数\n _ADDR_ : 対象アドレス\n _SRCR_ : 値 (アドレスではない)\n _N_ : サイズ (0-255)
-P:047B:memcpy: _ADDR_ : 対象アドレス\n _SRCA_ : ソースアドレス\n _N_ : サイズ
-P:048B:memcpy32: _ADDR_ : 対象アドレス\n _SRCA_ : ソースアドレス\n _N_ : サイズ (32バイト単位) (0 の場合 256 扱い)
-P:0566:add_16_ADDR: _ADDR_ : 対象\n _N_ : 足す数
-P:0572:add_16_SRCA: _ADDR_ : \n _N_ : 足す数
-P:057E:DrawScrollZero: X座標
-P:0583:: Y座標
-P:0589:BufDraw_addr_hex_32x8: _ADDR_ : 対象バッファ\n _SRCA_ : ソースメモリ
-P:05A0::(+5)
-P:05A3::(+12)
-P:05CB:BufDraw_addr_2bytes: _ADDR_ : 書き込みアドレス (!! 返却 : +5 !!)\n _SRCA_ : 直接読みこみ文字列化する
-P:05EC:: ':'
-P:05FF:BufDraw_hex_4bytes: 4バイト分実行 (00 00 00 00 )\n _ADDR_ : 書き込み先アドレス (!! 返却 : +12 !!)\n _SRCA_ : 読みこみアドレス
-P:0624:bin2hex: 説明 : _N_ の値を ASCII 2バイトに変換し、指定アドレスに書き込む。\n _ADDR_ : 指定アドレス\n _N_  : 値 
-P:0643:DATA_BIN2HEX
-P:0653:Draw8Lines:///////////////////////////////////////////\n _ADDR_ : NAMETABLE\n バランス ver\n MEM_BG の インデックス\n 最大速度ver
-P:0C5E:DrawXLines: _ADDR_ : NameTable\n _SRCA_ : MEM_BG\n _N_    : 行数 (最大:約6行)
-P:0C6E:: MEM_BG の インデックス
-P:0D3E:Draw1Sprite: _N_ : spr id
-P:0D47:: インデックスを計算
-P:0D48:: Y座標
-P:0D4E:: キャラ番号
-P:0D54:: 反転・優先順位
-P:0D5A:: X座標
-P:0D63:DrawAllSprites
-P:0D69:One2Handlet:///////////////////////////////////////////\n https://www.wizforest.com/tech/Z80vs6502/;p1#LoopAdd
-P:0D71:: 2
-P:0D73:: 3
+P:02D7::\n メモリの後始末\n SRCA はアドレスではなく、値として使用. N は 256 となる.
+P:02EF:DATA_TITLE: memcpy32 に渡す値
+P:0310:DATA_HELP
+P:0351::.hex 5354415254203AB9F62D26F82DBCC42020202020202020202020202020202020
+P:0391:DATA_Register
+P:0412:DrawHex16Lines: #$2081, _base
+P:0425:: 次のアドレス\n #$2181
+P:042E:: #$2181, _base+$20
+P:0432:DrawHex8Lines: _ADDR_ : Nametable\n _SRCA_ : _base\n _MM_ : 破壊
+P:043E:: 退避
+P:0446:: 準備
+P:044E::	SET_SRCAPTR _base ; 引数で入力済み
+P:0451:: 描画\n ★ #$2081 [2回目:#$2181]
+P:0471:memset:///////////////////////////////////////////\n 汎用関数\n _ADDR_ : 対象アドレス\n _SRCR_ : 値 (アドレスではない)\n _N_ : サイズ (0-255)
+P:047F:memcpy: _ADDR_ : 対象アドレス\n _SRCA_ : ソースアドレス\n _N_ : サイズ
+P:048F:memcpy32: _ADDR_ : 対象アドレス\n _SRCA_ : ソースアドレス\n _N_ : サイズ (32バイト単位) (0 の場合 256 扱い)
+P:056A:add_16_ADDR: _ADDR_ : 対象\n _N_ : 足す数
+P:0576:add_16_SRCA: _ADDR_ : \n _N_ : 足す数
+P:0582:DrawScrollZero: X座標
+P:0587:: Y座標
+P:058D:BufDraw_addr_hex_32x8: _ADDR_ : 対象バッファ\n _SRCA_ : ソースメモリ
+P:05A4::(+5)
+P:05A7::(+12)
+P:05CF:BufDraw_addr_2bytes: _ADDR_ : 書き込みアドレス (!! 返却 : +5 !!)\n _SRCA_ : 直接読みこみ文字列化する
+P:05D4::\n 0000 (アドレス部分)
+P:05F0:: ':'
+P:0603:BufDraw_hex_4bytes: 4バイト分実行 (00 00 00 00 )\n _ADDR_ : 書き込み先アドレス (!! 返却 : +12 !!)\n _SRCA_ : 読みこみアドレス
+P:0628:bin2hex: 説明 : _N_ の値を ASCII 2バイトに変換し、指定アドレスに書き込む。\n _ADDR_ : 指定アドレス\n _N_  : 値 
+P:0647:DATA_BIN2HEX
+P:0657:Draw8Lines:///////////////////////////////////////////\n _ADDR_ : NAMETABLE\n バランス ver\n MEM_BG の インデックス\n 最大速度ver
+P:0C62:DrawXLines: _ADDR_ : NameTable\n _SRCA_ : MEM_BG\n _N_    : 行数 (最大:約6行)
+P:0C72:: MEM_BG の インデックス
+P:0D42:Draw1Sprite: _N_ : spr id
+P:0D4B:: インデックスを計算
+P:0D4C:: Y座標
+P:0D52:: キャラ番号
+P:0D58:: 反転・優先順位
+P:0D5E:: X座標
+P:0D67:DrawAllSprites
+P:0D6D:One2Handlet:///////////////////////////////////////////\n https://www.wizforest.com/tech/Z80vs6502/;p1#LoopAdd
 P:0D75:: 2
-P:0D77:: 2
-P:0D78:: 2
-P:0D79:: 3
-P:0D7B:: 3 / 2
-P:0D7D:: 2
-P:0D7E:: 2
-P:0D7F:: 5
-P:0D81:: 3 / 2
-P:0D83:: 3
-P:0D85:: 3
-P:0D88:NMI:///////////////////////////////////////////
-P:0D8D::\n 処理
-P:0D94:BREAK:///////////////////////////////////////////
-P:0D99::\n ■ rti 戻り先補正\n BREAK 命令の戻りアドレスは +1 される.\n 補正のため, スタック5番目のPC下位バイトに対し dec する.\n 参考図 : [ y, x, a, P, <PC0>, PC1 ]
-P:0DAB:DrawRegisters:///////////////////////////////////////////
-P:0DAC:: パレットはここに配置しておく
+P:0D77:: 3
+P:0D79:: 2
+P:0D7B:: 2
+P:0D7C:: 2
+P:0D7D:: 3
+P:0D7F:: 3 / 2
+P:0D81:: 2
+P:0D82:: 2
+P:0D83:: 5
+P:0D85:: 3 / 2
+P:0D87:: 3
+P:0D89:: 3
+P:0D8C:NMI:///////////////////////////////////////////
+P:0D91::\n 処理
+P:0D98:BREAK:///////////////////////////////////////////
+P:0D9D::\n ■ rti 戻り先補正\n BREAK 命令の戻りアドレスは +1 される.\n 補正のため, スタック5番目のPC下位バイトに対し dec する.\n 参考図 : [ y, x, a, P, <PC0>, PC1 ]
+P:0DAF:DrawRegisters:///////////////////////////////////////////
+P:0DB0:: パレットはここに配置しておく
 P:3FD0:PALLET
 R:00D0:_y
 R:00D1:_y_View
@@ -137,8 +136,8 @@ R:00D8:_BaseOfsIdx
 R:00D9:_padMode
 R:00DA:_is_Hex_Changing
 R:00DB:_is_need_AllDraw
-R:00DC:_test
-R:00DD:_test1
+R:00DC:_count
+R:00DD:_count1
 R:00DE:_reserve
 R:00DF:_reserve1
 R:00F0:_pad1
@@ -157,10 +156,10 @@ R:00FC:_ADDR_
 R:00FD:_ADDR1_
 R:00FE:_SRCA_
 R:00FF:_SRCA1_
-R:0200:MEM_SP
-R:0300:MEM_BG
-W:0000:SRAM
 R:0100:i
+G:C000:MEM_BG
+G:C000:MEM_SP
+G:C000:SRAM
 G:C000:X_OFS
 G:C000:Y_OFS
 G:C000:pad_A
@@ -171,8 +170,9 @@ G:C000:pad_Right
 G:C000:pad_Up
 G:C000:pad_select
 G:C000:pad_start
-G:CDA5:ADDR
-G:CDA5:N
-G:CDA5:SRCA
-G:CDA5:X
-G:CDA5:Y
+G:C43E:MM
+G:CDA9:ADDR
+G:CDA9:N
+G:CDA9:SRCA
+G:CDA9:X
+G:CDA9:Y

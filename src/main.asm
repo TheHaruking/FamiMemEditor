@@ -1,6 +1,6 @@
 ;///////////////////////////////////////////
-;// 変数
-	; 処理で使用
+;■ 変数
+; $0000
 	_y			= $D0
 	_y_View		= $D1
 	_x			= $D2
@@ -16,8 +16,8 @@
 	_is_Hex_Changing = $DA
 	_is_need_AllDraw = $DB
 
-	_test		= $DC
-	_test1		= $DD
+	_count		= $DC
+	_count1		= $DD
 	_reserve	= $DE
 	_reserve1	= $DF
 
@@ -41,10 +41,17 @@
 	_SRCA_  = $FE ; 16 bit のアドレスを渡すのに使用
 	_SRCA1_ = $FF
 
-;// 定数
-	MEM_SP	= $0200
-	MEM_BG	= $0300
-	SRAM	= $6000
+; $0200 : スプライトバッファ
+	MEM_SP	EQU $0200
+; $0300 : BGバッファ
+	MEM_BG	EQU $0300
+; $0400
+; $0500
+; $0600
+; $0700
+
+;■ 定数
+	SRAM	EQU $6000
 
 	; ボタン (一般のファミコンゲームとは逆になっているが、こちらが好み。)
 	pad_A		EQU #$01
@@ -60,6 +67,45 @@
 	X_OFS		EQU $30 ; "0000:" の分を空けてカーソルを表示する際のオフセット値
 ;///////////////////////////////////////////
 ; macro
+macro SET_ADDR ADDR
+	lda #<(ADDR)
+	sta _ADDR_
+	lda #>(ADDR)
+	sta _ADDR_+1
+endm
+macro SET_ADDRPTR ADDR
+	lda ADDR
+	sta _ADDR_
+	lda ADDR+1
+	sta _ADDR_+1
+endm
+macro SET_SRCA SRCA
+	lda #<(SRCA)
+	sta _SRCA_
+	lda #>(SRCA)
+	sta _SRCA_+1
+endm
+macro SET_SRCAPTR SRCA
+	lda SRCA
+	sta _SRCA_
+	lda SRCA+1
+	sta _SRCA_+1
+endm
+macro SET_N N
+	lda N
+	sta _N_
+endm
+macro SET_MMPTR MM
+	lda MM
+	sta _MM_
+	lda MM+1
+	sta _MM_+1
+endm
+macro SET_ARGS ADDR,SRCA,N
+	SET_ADDR ADDR
+	SET_SRCA SRCA
+	SET_N N
+endm
 macro PUSH_REG X,Y,ADDR,SRCA,N
 	if X=1
 		txa
@@ -212,9 +258,9 @@ MainLoop:
 	jsr CalcCursor
 	;
 	; テスト
-	inc _test
+	inc _count
 	bne +
-		inc _test+1
+		inc _count+1
 	+
 	;
 	; 描画	
@@ -570,69 +616,24 @@ nonefunc:
 DrawInitialize:
 	;
 	; 事前描画 (タイトル)
-	lda #<(MEM_BG + $20*0)
-	sta _ADDR_
-	lda #>(MEM_BG + $20*0)
-	sta _ADDR_+1
-	lda #<(DATA_TITLE+1)
-	sta _SRCA_
-	lda #>(DATA_TITLE+1)
-	sta _SRCA_+1
-	lda DATA_TITLE
-	sta _N_
+	SET_ARGS MEM_BG+$20*0, DATA_TITLE+1, DATA_TITLE
 	jsr memcpy32
 
-	lda #<(MEM_BG + $20*1)
-	sta _ADDR_
-	lda #>(MEM_BG + $20*1)
-	sta _ADDR_+1
-	lda #<(DATA_Register+1)
-	sta _SRCA_
-	lda #>(DATA_Register+1)
-	sta _SRCA_+1
-	lda DATA_Register
-	sta _N_
+	SET_ARGS MEM_BG+$20*1, DATA_Register+1, DATA_Register
 	jsr memcpy32
 
 	;
 	; 描画
-	lda #<$2040
-	sta _ADDR_
-	lda #>$2040
-	sta _ADDR_+1
-	lda #<(MEM_BG + $20*0)
-	sta _SRCA_
-	lda #>(MEM_BG + $20*0)
-	sta _SRCA_+1
-	lda DATA_TITLE
-	sta _N_
-
+	SET_ARGS $2040, MEM_BG+$20*0, DATA_TITLE
 	WAIT_VBLANK
 	jsr DrawXLines
 
-	lda #<$22A0
-	sta _ADDR_
-	lda #>$22A0
-	sta _ADDR_+1
-	lda #<(MEM_BG + $20*1)
-	sta _SRCA_
-	lda #>(MEM_BG + $20*1)
-	sta _SRCA_+1
-	lda DATA_Register
-	sta _N_
-
+	SET_ARGS $22A0, MEM_BG+$20*1, DATA_Register
 	jsr DrawXLines
 	jsr DrawScrollZero
 	;
 	; メモリの後始末
-	lda #<(MEM_BG)
-	sta _ADDR_
-	lda #>(MEM_BG)
-	sta _ADDR_+1
-	lda #0	; アドレスではなく、値として使用
-	sta _SRCA_
-	lda #0	; 256
-	sta _N_
+	SET_ARGS MEM_BG, #0, #0 ; SRCA はアドレスではなく、値として使用. N は 256 となる.
 	jsr memset
 
 	rts
@@ -657,20 +658,13 @@ DATA_Register:
 
 DrawHex16Lines:
 	; #$2081, _base
-	lda #<$2081 ; 1つ右に描画
-	sta _ADDR_
-	lda #>$2081
-	sta _ADDR_+1
-	lda _base
-	sta _SRCA_
-	lda _base+1
-	sta _SRCA_+1
+	SET_ADDR $2081
+	SET_SRCAPTR _base
 	jsr DrawHex8Lines
 
 	; 次のアドレス
 	inc _ADDR_+1 ; #$2181
-	lda #$20
-	sta _N_
+	SET_N #$20
 	jsr add_16_SRCA
 
 	; #$2181, _base+$20
@@ -684,27 +678,15 @@ DrawHex8Lines:
 	PUSH_REG 0,0,1,1,0
 
 	; 退避
-	lda _ADDR_
-	sta _MM_
-	lda _ADDR_+1
-	sta _MM_+1
+	SET_MMPTR _ADDR_
 	
 	; 準備
-	lda #<(MEM_BG)
-	sta _ADDR_
-	lda #>(MEM_BG)
-	sta _ADDR_+1
-;	lda _base	; ★ 開始アドレス
-;	sta _SRCA_
-;	lda _base+1
-;	sta _SRCA_+1
+	SET_ADDR MEM_BG
+;	SET_SRCAPTR _base ; 引数で入力済み
 	jsr BufDraw_addr_hex_32x8
 
 	; 描画
-	lda _MM_		; ★ #$2081 [2回目:#$2181]
-	sta _ADDR_
-	lda _MM_+1
-	sta _ADDR_+1
+	SET_ADDRPTR _MM_ ; ★ #$2081 [2回目:#$2181]
 
 	WAIT_VBLANK
 	jsr Draw8Lines
@@ -811,15 +793,14 @@ BufDraw_addr_hex_32x8:
 
 	ldx #8
 	ldy #0
-	-	jsr BufDraw_addr_2bytes ;(+5)
+	-
+		jsr BufDraw_addr_2bytes ;(+5)
 		jsr BufDraw_hex_4bytes ;(+12)
 
-		lda #(32-(5+12))
-		sta _N_
+		SET_N #(32-(5+12))
 		jsr add_16_ADDR
 
-		lda #4
-		sta _N_
+		SET_N #4
 		jsr add_16_SRCA
 
 		dex
@@ -832,29 +813,22 @@ BufDraw_addr_hex_32x8:
 ; _SRCA_ : 直接読みこみ文字列化する
 BufDraw_addr_2bytes:
 	PUSH_REG 0,1,0,0,1
-
-	lda _SRCA_+1
-	sta _N_
+	;
+	; 0000 (アドレス部分)
+	SET_N _SRCA_+1
 	jsr bin2hex
-
-	lda #2
-	sta _N_
+	SET_N #2
 	jsr add_16_ADDR
-
-	lda _SRCA_
-	sta _N_
+	SET_N _SRCA_
 	jsr bin2hex
-
-	lda #2
-	sta _N_
+	SET_N #2
 	jsr add_16_ADDR
 
 	lda #$3A ; ':'
 	ldy #0
 	sta (_ADDR_), y
 
-	lda #1
-	sta _N_
+	SET_N #1
 	jsr add_16_ADDR
 
 	POP_REG 0,1,0,0,1
@@ -868,12 +842,12 @@ BufDraw_hex_4bytes:
 
 	ldx #4
 	ldy #0
-	-	lda (_SRCA_), y
+	-
+		lda (_SRCA_), y
 		sta _N_
 		jsr bin2hex
 
-		lda #3
-		sta _N_
+		SET_N #3
 		jsr add_16_ADDR
 
 		iny
