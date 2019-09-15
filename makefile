@@ -4,10 +4,8 @@ TARGET := FamiMemEditor
 
 all : $(TARGET).nes exec
 
-src/main.1.asm : src/main.asm
+FamiMemEditor.nes : src/_base.asm src/main.asm makefile
 	python hira2hex.py src/main.asm
-
-FamiMemEditor.nes : src/_base.asm src/main.1.asm makefile
 	asm6f -l -m -c src/_base.asm $@
 	rm src/*.lst
 	rm src/main.1.asm

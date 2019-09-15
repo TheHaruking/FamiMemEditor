@@ -38,8 +38,8 @@
 	_MM1_	= $FB
 	_ADDR_	= $FC ; 16 bit のアドレスを渡すのに使用
 	_ADDR1_ = $FD
-	_DSTA_  = $FE ; 16 bit のアドレスを渡すのに使用
-	_DSTA1_ = $FF
+	_SRCA_  = $FE ; 16 bit のアドレスを渡すのに使用
+	_SRCA1_ = $FF
 
 ;// 定数
 	MEM_SP	= $0200
@@ -60,7 +60,7 @@
 	X_OFS		EQU $30 ; "0000:" の分を空けてカーソルを表示する際のオフセット値
 ;///////////////////////////////////////////
 ; macro
-macro PUSH_REG X,Y,ADDR,DSTA
+macro PUSH_REG X,Y,ADDR,SRCA,N
 	if X=1
 		txa
 		pha
@@ -75,20 +75,28 @@ macro PUSH_REG X,Y,ADDR,DSTA
 		lda _ADDR_+1
 		pha
 	endif
-	if DSTA=1
-		lda _DSTA_
+	if SRCA=1
+		lda _SRCA_
 		pha
-		lda _DSTA_+1
+		lda _SRCA_+1
+		pha
+	endif
+	if N=1
+		lda _N_
 		pha
 	endif
 endm
 
-macro POP_REG X,Y,ADDR,DSTA
-	if DSTA=1
+macro POP_REG X,Y,ADDR,SRCA,N
+	if N=1
 		pla
-		sta _DSTA_+1
+		sta _N_
+	endif
+	if SRCA=1
 		pla
-		sta _DSTA_
+		sta _SRCA_+1
+		pla
+		sta _SRCA_
 	endif
 	if ADDR=1
 		pla
@@ -106,13 +114,13 @@ macro POP_REG X,Y,ADDR,DSTA
 	endif
 endm
 
-macro LSR_A N
+macro LSR_n N
 	rept N
 		lsr
 	endr
 endm
 
-macro ASL_A N
+macro ASL_n N
 	rept N
 		asl
 	endr
@@ -324,7 +332,7 @@ EditHex:
 	;
 	; 右回り値を取得 (異常値時は Return)
 	lda _pad1
-	LSR_A 4
+	LSR_n 4
 	tax
 	lda DATA_Direction2Hex, x
 	bpl +
@@ -347,7 +355,7 @@ EditHex:
 	; rol		; 2
 	ldx _is_Hex_Changing
 	bne + ; 初回
-		ASL_A 4
+		ASL_n 4
 	+
 	pha
 	;
@@ -441,7 +449,7 @@ CalcCursor:
 	;
 	; y, x カーソル座標 算出
 	lda _y
-	ASL_A 3
+	ASL_n 3
 	clc
 	adc #Y_OFS 	; 表示調整オフセットを足す
 	sta _y_View
@@ -452,7 +460,7 @@ CalcCursor:
 	clc
 	adc _x
 	adc _is_Hex_Changing
-	ASL_A 3
+	ASL_n 3
 	clc
 	adc #X_OFS
 	sta _x_View
@@ -469,7 +477,7 @@ CalcCursor:
 	lda _base+1
 	sta _ADDR_+1
 	lda _y		; _y * 4
-	ASL_A 2
+	ASL_n 2
 	clc			; + _x
 	adc _x
 	sta _N_
@@ -548,7 +556,7 @@ Exec: ; 実行
 ;	and #pad_select
 ;
 ; A,X,Y のクリア
-	lda #$00
+	lda #0
 	tax
 	tay
 	WAIT_VBLANK
@@ -562,58 +570,55 @@ nonefunc:
 DrawInitialize:
 	;
 	; 事前描画 (タイトル)
-	lda #<(MEM_BG + 32*0)
+	lda #<(MEM_BG + $20*0)
 	sta _ADDR_
-	lda #>(MEM_BG + 32*0)
+	lda #>(MEM_BG + $20*0)
 	sta _ADDR_+1
-	ldx #0
-	ldy #0*32 ; 行
-	-	lda BG_DATA1, x
-		sta (_ADDR_), y
-		iny
-		inx
-		cpx #32 * 5 ; 5 行分
-	bne -
+	lda #<(DATA_TITLE+1)
+	sta _SRCA_
+	lda #>(DATA_TITLE+1)
+	sta _SRCA_+1
+	lda DATA_TITLE
+	sta _N_
+	jsr memcpy32
 
-	jmp +
-	;	BG_DATAX: .!hira "　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　"
-		BG_DATA1: .!hira "010101020203030303　　ふぁみめむ99えでぃた　　030303030202010101"
-		BG_DATA2: .!hira "Ａ＋じゅうじ：かーそるいどう　　　　　　　　　　　　　　　　　　"
-		BG_DATA3: .!hira "Ｂ＋じゅうじ：あどれすへんこう　　　　　　　　　　　　　　　　　"
-	;	BG_DATA4: .!hira "ＳＴＡＲＴ　：こぴー＆ぺーすと　　　　　　　　　　　　　　　　　"
-		BG_DATA4: .!hira "　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　"
-		BG_DATA5: .!hira "ＳＥＬＥＣＴ：じっこう（ひょうじあどれすのせんとう）　　　　　　"
-	;	BG_DATA2: .db "A : Move Cursor                 "
-	;	BG_DATA3: .db "B : Change Addr Page            "
-	;	BG_DATA4: .db "start  : Copy & Paste           "
-	;	BG_DATA5: .db "select : Exec (Addr Page)       "
-	+
+	lda #<(MEM_BG + $20*1)
+	sta _ADDR_
+	lda #>(MEM_BG + $20*1)
+	sta _ADDR_+1
+	lda #<(DATA_Register+1)
+	sta _SRCA_
+	lda #>(DATA_Register+1)
+	sta _SRCA_+1
+	lda DATA_Register
+	sta _N_
+	jsr memcpy32
+
 	;
 	; 描画
 	lda #<$2040
 	sta _ADDR_
 	lda #>$2040
 	sta _ADDR_+1
-	lda #<(MEM_BG + $000*2)
-	sta _DSTA_
-	lda #>(MEM_BG + $000*2)
-	sta _DSTA_+1
-	lda #1
+	lda #<(MEM_BG + $20*0)
+	sta _SRCA_
+	lda #>(MEM_BG + $20*0)
+	sta _SRCA_+1
+	lda DATA_TITLE
 	sta _N_
 
 	WAIT_VBLANK
-
 	jsr DrawXLines
 
-	lda #<$22C0
+	lda #<$22A0
 	sta _ADDR_
-	lda #>$22C0
+	lda #>$22A0
 	sta _ADDR_+1
-	lda #<(MEM_BG + $0020)
-	sta _DSTA_
-	lda #>(MEM_BG + $0020)
-	sta _DSTA_+1
-	lda #4
+	lda #<(MEM_BG + $20*1)
+	sta _SRCA_
+	lda #>(MEM_BG + $20*1)
+	sta _SRCA_+1
+	lda DATA_Register
 	sta _N_
 
 	jsr DrawXLines
@@ -624,79 +629,148 @@ DrawInitialize:
 	sta _ADDR_
 	lda #>(MEM_BG)
 	sta _ADDR_+1
-	lda #$00
+	lda #0	; アドレスではなく、値として使用
+	sta _SRCA_
+	lda #0	; 256
 	sta _N_
-	lda #256
-	sta _N1_
 	jsr memset
 
 	rts
 
+DATA_TITLE:
+	.db 1 ; memcpy32 に渡す値
+	.!hira "010101020203030303　　ふぁみめむ99えでぃた　　030303030202010101"
+
+DATA_HELP
+	.db 4
+	.!hira "Ａ＋じゅうじ：かーそるいどう　　　　　　　　　　　　　　　　　　"
+	.!hira "Ｂ＋じゅうじ：あどれすへんこう　　　　　　　　　　　　　　　　　"
+	.!hira "　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　" ;.!hira "ＳＴＡＲＴ　：こぴー＆ぺーすと　　　　　　　　　　　　　　　　　"
+	.!hira "ＳＥＬＥＣＴ：じっこう（ひょうじあどれすのせんとう）　　　　　　"
+
+DATA_Register:
+	.db 4
+	.db $41,$3a,$38,$38,$00,$50,$43,$3a,$30,$30,$30,$32,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+	.db $58,$3a,$30,$30,$00,$00,$00,$4e,$56,$2d,$42,$2d,$49,$5a,$43,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+	.db $59,$3a,$30,$30,$00,$50,$3a,$a9,$a8,$a9,$a8,$a8,$a8,$a8,$a9,$41,$31,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+	.db $53,$3a,$46,$44,$3a,$5b,$30,$30,$00,$30,$30,$20,$30,$30,$20,$30,$30,$5d,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+
 DrawHex16Lines:
-	;
-	; 描画1,2 (8行x2)
-	lda _base	; BufDraw_addr_hex_32x8 での読みこみ元
-	sta _DSTA_
+	; #$2081, _base
+	lda #<$2081 ; 1つ右に描画
+	sta _ADDR_
+	lda #>$2081
+	sta _ADDR_+1
+	lda _base
+	sta _SRCA_
 	lda _base+1
-	sta _DSTA_+1
+	sta _SRCA_+1
+	jsr DrawHex8Lines
 
-	lda #<$2080	; Draw8Lines での書き込み先 (5行目)
+	; 次のアドレス
+	inc _ADDR_+1 ; #$2181
+	lda #$20
+	sta _N_
+	jsr add_16_SRCA
+
+	; #$2181, _base+$20
+	jsr DrawHex8Lines
+	rts
+
+; _ADDR_ : Nametable
+; _SRCA_ : _base
+; _MM_ : 破壊
+DrawHex8Lines:
+	PUSH_REG 0,0,1,1,0
+
+	; 退避
+	lda _ADDR_
 	sta _MM_
-	lda #>$2080
+	lda _ADDR_+1
 	sta _MM_+1
+	
+	; 準備
+	lda #<(MEM_BG)
+	sta _ADDR_
+	lda #>(MEM_BG)
+	sta _ADDR_+1
+;	lda _base	; ★ 開始アドレス
+;	sta _SRCA_
+;	lda _base+1
+;	sta _SRCA_+1
+	jsr BufDraw_addr_hex_32x8
 
-	ldx #1
-	--
-		;
-		; 準備 : 4バイトを表示 x 8行
-		lda #<(MEM_BG+1) ; 1文字分右にずらす
-		sta _ADDR_
-		lda #>(MEM_BG+1)
-		sta _ADDR_+1
-		; _DSTA_ に _base を設定済み
-		jsr BufDraw_addr_hex_32x8
-		;
-		; 描画
-		lda _MM_		; #$2081 [2回目:#$2181]
-		sta _ADDR_
-		lda _MM_+1
-		sta _ADDR_+1
+	; 描画
+	lda _MM_		; ★ #$2081 [2回目:#$2181]
+	sta _ADDR_
+	lda _MM_+1
+	sta _ADDR_+1
 
-		WAIT_VBLANK
+	WAIT_VBLANK
+	jsr Draw8Lines
+	jsr DrawScrollZero
 
-		jsr Draw8Lines
-		jsr DrawScrollZero
-
-		dex
-	bmi ++
-		;
-		; BufDraw_addr_hex_32x8 でのバイト読みこみ元をインクリメント
-		lda #32
-		sta _N_
-		jsr add_16_DSTA
-		;
-		; Draw8Lines で書き込む Nametable 上位バイトを inc し、 +$100 する
-		inc _MM_+1
-	jmp --
-	++
+	POP_REG 0,0,1,1,0
 	rts
 
 ;///////////////////////////////////////////
 ; 汎用関数
 ; _ADDR_ : 対象アドレス
-; _N_ : 値
-; _N1_ ; サイズ
+; _SRCR_ : 値 (アドレスではない)
+; _N_ : サイズ (0-255)
 memset:
-	PUSH_REG 0,1,0,0
+	PUSH_REG 0,1,0,0,0
 
-	lda _N_
-	ldy #0
+	lda _SRCA_
+	ldy _N_
 	-	sta (_ADDR_), y
-		iny
-		cpy _N1_
+		dey
 	bne -
 
-	POP_REG 0,1,0,0
+	POP_REG 0,1,0,0,0
+	rts
+
+; _ADDR_ : 対象アドレス
+; _SRCA_ : ソースアドレス
+; _N_ : サイズ
+memcpy:
+	PUSH_REG 0,1,0,0,0
+
+	ldy #0
+	-	lda (_SRCA_), y
+		sta (_ADDR_), y
+		iny
+		cpy _N_
+	bne -
+
+	POP_REG 0,1,0,0,0
+	rts
+
+; _ADDR_ : 対象アドレス
+; _SRCA_ : ソースアドレス
+; _N_ : サイズ (32バイト単位) (0 の場合 256 扱い)
+memcpy32:
+	PUSH_REG 1,1,1,1,1
+	
+	ldx _N_
+	-
+		ldy #0
+	rept 32
+		lda (_SRCA_), y
+		sta (_ADDR_), y
+		iny
+	endr
+		lda #32
+		sta _N_
+		jsr add_16_ADDR
+		jsr add_16_SRCA
+
+		dex
+		beq +
+	jmp -
+	+
+
+	POP_REG 1,1,1,1,1
 	rts
 
 ; _ADDR_ : 対象
@@ -713,13 +787,13 @@ add_16_ADDR:
 
 ; _ADDR_ : 
 ; _N_ : 足す数
-add_16_DSTA:
-	lda _DSTA_
+add_16_SRCA:
+	lda _SRCA_
 	clc
 	adc _N_
-	sta _DSTA_
+	sta _SRCA_
 	bcc +
-		inc _DSTA_+1
+		inc _SRCA_+1
 	+
 	rts
 
@@ -731,10 +805,9 @@ DrawScrollZero:
 	rts
 
 ; _ADDR_ : 対象バッファ
-; _DSTA_ : ソースメモリ
-; 破壊 : _N_
+; _SRCA_ : ソースメモリ
 BufDraw_addr_hex_32x8:
-	PUSH_REG 1,1,1,1
+	PUSH_REG 1,1,1,1,1
 
 	ldx #8
 	ldy #0
@@ -747,20 +820,20 @@ BufDraw_addr_hex_32x8:
 
 		lda #4
 		sta _N_
-		jsr add_16_DSTA
+		jsr add_16_SRCA
 
 		dex
 	bne -
 
-	POP_REG 1,1,1,1
+	POP_REG 1,1,1,1,1
 	rts
 
 ; _ADDR_ : 書き込みアドレス (!! 返却 : +5 !!)
-; _DSTA_ : 直接読みこみ文字列化する
+; _SRCA_ : 直接読みこみ文字列化する
 BufDraw_addr_2bytes:
-	PUSH_REG 0,1,0,0
+	PUSH_REG 0,1,0,0,1
 
-	lda _DSTA_+1
+	lda _SRCA_+1
 	sta _N_
 	jsr bin2hex
 
@@ -768,7 +841,7 @@ BufDraw_addr_2bytes:
 	sta _N_
 	jsr add_16_ADDR
 
-	lda _DSTA_
+	lda _SRCA_
 	sta _N_
 	jsr bin2hex
 
@@ -784,18 +857,18 @@ BufDraw_addr_2bytes:
 	sta _N_
 	jsr add_16_ADDR
 
-	POP_REG 0,1,0,0
+	POP_REG 0,1,0,0,1
 	rts
 
 ; 4バイト分実行 (00 00 00 00 )
 ; _ADDR_ : 書き込み先アドレス (!! 返却 : +12 !!)
-; _DSTA_ : 読みこみアドレス
+; _SRCA_ : 読みこみアドレス
 BufDraw_hex_4bytes:
-	PUSH_REG 1,1,0,0
+	PUSH_REG 1,1,0,0,1
 
 	ldx #4
 	ldy #0
-	-	lda (_DSTA_), y
+	-	lda (_SRCA_), y
 		sta _N_
 		jsr bin2hex
 
@@ -807,14 +880,14 @@ BufDraw_hex_4bytes:
 		dex
 	bne -
 
-	POP_REG 1,1,0,0
+	POP_REG 1,1,0,0,1
 	rts
 
 ; 説明 : _N_ の値を ASCII 2バイトに変換し、指定アドレスに書き込む。
 ; _ADDR_ : 指定アドレス
 ; _N_  : 値 
 bin2hex:
-	PUSH_REG 0,1,0,0
+	PUSH_REG 0,1,0,0,0
 
 	lda _N_
 	and #$0F
@@ -824,13 +897,13 @@ bin2hex:
 	sta (_ADDR_), y
 
 	lda _N_
-	LSR_A 4
+	LSR_n 4
 	tay
 	lda DATA_BIN2HEX, y
 	ldy #0
 	sta (_ADDR_),y
 
-	POP_REG 0,1,0,0
+	POP_REG 0,1,0,0,0
 	rts
 
 DATA_BIN2HEX:	.db "0123456789ABCDEF"
@@ -840,7 +913,7 @@ DATA_BIN2HEX:	.db "0123456789ABCDEF"
 Draw8Lines:
 if 0	
 	; バランス ver
-	PUSH_REG 1,1,0,0
+	PUSH_REG 1,1,0,0,0
 
 	lda _ADDR_+1
 	sta #$2006
@@ -859,7 +932,7 @@ if 0
 		dex
 	bpl -
 
-	POP_REG 1,1,0,0
+	POP_REG 1,1,0,0,0
 	rts
 
 	Draw8Lines_table:
@@ -881,10 +954,10 @@ else
 endif
 
 ; _ADDR_ : NameTable
-; _DSTA_ : MEM_BG
+; _SRCA_ : MEM_BG
 ; _N_    : 行数 (最大:約6行)
 DrawXLines:
-	PUSH_REG 1,1,0,0
+	PUSH_REG 1,1,0,0,0
 
 	lda _ADDR_+1
 	sta #$2006
@@ -898,23 +971,23 @@ DrawXLines:
 			jmp ++
 		+
 	    REPT 32
-			lda (_DSTA_), y
+			lda (_SRCA_), y
 			sta #$2007
 			iny
 	    ENDR
 	jmp -
 	++
 
-	POP_REG 1,1,0,0
+	POP_REG 1,1,0,0,0
 	rts
 
 ; _N_ : spr id
 Draw1Sprite:
-	PUSH_REG 0,1,0,0
+	PUSH_REG 0,1,0,0,0
 
 	lda _N_
 	sta $2003
-	ASL_A 2
+	ASL_n 2
 	tay ; インデックスを計算
 
 	lda MEM_SP, y ; Y座標
@@ -926,7 +999,7 @@ Draw1Sprite:
 	lda MEM_SP+3, y ; X座標
 	sta $2004
 
-	POP_REG 0,1,0,0
+	POP_REG 0,1,0,0,0
 	rts
 
 DrawAllSprites:
@@ -962,19 +1035,19 @@ One2Handlet:
 ;///////////////////////////////////////////
 NMI:
 	pha
-	PUSH_REG 1,1,0,0
+	PUSH_REG 1,1,0,0,0
 	;
 	; 処理
 	nop
 
-	POP_REG 1,1,0,0
+	POP_REG 1,1,0,0,0
 	pla
 	rti
 
 ;///////////////////////////////////////////
 BREAK:
 	pha
-	PUSH_REG 1,1,0,0
+	PUSH_REG 1,1,0,0,0
 	;
 	; ■ rti 戻り先補正
 	; BREAK 命令の戻りアドレスは +1 される.
@@ -986,8 +1059,12 @@ BREAK:
 		dec $0100+6, x
 	+
 
-	POP_REG 1,1,0,0
+	jsr DrawRegisters
+
+	POP_REG 1,1,0,0,0
 	pla
 	rti
 
 ;///////////////////////////////////////////
+DrawRegisters:
+	rts
