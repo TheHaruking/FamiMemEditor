@@ -21,8 +21,8 @@
 	_pad1dir8	= $DE
 	_reserve	= $DF
 
-	_curaddrStore = $E0
-	_curaddrStore1 = $E1
+	_selectedAddr = $E0
+	_selectedAddr1 = $E1
 	_selectAddr = $E2
 	_selectAddr1 = $E3
 	_selectN	= $E4
@@ -634,13 +634,13 @@ Exec: ; 実行
 ; コピペ, 設定画面など
 OtherFunc:
 	;
-	; 初回押下時, カーソルアドレスを保存
+	; 初回押下時, _select_y を設定
 	lda _pad1+1
 	and #pad_start
 	beq +
 		lda #0
 		sta _is_pasted
-		jmp StoreCursorAddr
+		jmp StartSelectRange
 	+
 	;
 	; 離し時、コピーを実行
@@ -671,15 +671,7 @@ OtherFunc:
 	sta _ADDR_+1
 	jmp (_ADDR_)
 
-StoreCursorAddr:
-	lda _curaddr
-	and #$FC ; 行頭からコピー
-	sta _curaddrStore
-	ora #$03 ; 行末へ
-	sta _selectAddr
-	lda _curaddr+1
-	sta _curaddrStore+1
-	sta _selectAddr+1
+StartSelectRange:
 	lda _y
 	sta _select_y
 	rts
@@ -687,7 +679,7 @@ StoreCursorAddr:
 CopySelectRange:
 	jsr calc_SelectRenge
 	SET_ADDR _copy_buf+1
-	SET_SRCA_PTR _curaddrStore
+	SET_SRCA_PTR _selectedAddr
 	SET_N _selectN
 	jsr memcpy
 	lda _selectN
@@ -695,30 +687,25 @@ CopySelectRange:
 	rts
 
 SelectRangeU:
-	bit _select_y
-	beq +
-		lda _selectAddr
-		sec
-		sbc #4
-		sta _selectAddr
+	lda _select_y
+	cmp #$01
+	bmi +
 		dec _select_y
 	+
+	and #$0F
 	rts
 
 SelectRangeD:
 	lda _select_y
 	cmp #$0F
-	beq +
-		lda _selectAddr
-		clc
-		adc #4
-		sta _selectAddr
+	bpl +
 		inc _select_y
 	+
+	and #$0F
 	rts
 
 SelectPaste:
-	SET_ADDR_PTR _curaddrStore
+	SET_ADDR_PTR _curaddr
 	SET_SRCA _copy_buf+1
 	SET_N _copy_buf
 	jsr memcpy
@@ -728,10 +715,9 @@ SelectPaste:
 calc_SelectRenge:
 	;
 	; コピー範囲算出
-	lda _selectAddr
+	lda _select_y
 	sec
-	sbc _curaddrStore
-	sta _selectN
+	sbc _y
 	;
 	; 逆方向選択時
 	bpl +
@@ -740,15 +726,39 @@ calc_SelectRenge:
 		eor #$FF
 		clc
 		adc #1
+		;
+		; 範囲バイト数算出
+		ASL_n 2
+		clc
+		adc #4
 		sta _selectN
 		;
 		; dst を _selectAddr へ変更
-		lda _selectAddr
-		sta _curaddrStore
-		lda _selectAddr+1
-		sta _curaddrStore+1
+		lda _select_y
+		ASL_n 2
+		clc
+		adc _base
+		sta _selectedAddr
+		jmp ++
+	;
+	; 通常選択時
 	+
-	inc _selectN
+		;
+		; 範囲バイト数算出
+		ASL_n 2
+		clc
+		adc #4
+		sta _selectN
+		;
+		; dst を _selectAddr へ変更
+		lda _y
+		ASL_n 2
+		clc
+		adc _base
+		sta _selectedAddr
+	++
+	lda _base+1
+	sta _selectedAddr+1
 	rts
 
 DATA_OtherFuncTable:
@@ -779,7 +789,7 @@ DrawInitialize:
 	jsr DrawXLines
 	jsr DrawScrollZero
 
-	SET_ARGS $2320, MEM_BG5, DATA_HELP
+	SET_ARGS $2340, MEM_BG5, DATA_HELP
 	WAIT_VBLANK
 	jsr DrawXLines
 	jsr DrawScrollZero
@@ -797,11 +807,10 @@ DATA_TITLE:
 	.!hira "010101020203030303　　ふぁみめむ99えでぃた　　030303030202010101"
 
 DATA_HELP
-	.db 4
-	.!hira "Ａ＋じゅうじ：かーそるいどう　　　　　　　　　　　　　　　　　　"
-	.!hira "Ｂ＋じゅうじ：あどれすへんこう　　　　　　　　　　　　　　　　　"
-	.!hira "　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　" ;.!hira "ＳＴＡＲＴ　：こぴー＆ぺーすと　　　　　　　　　　　　　　　　　"
-	.!hira "ＳＥＬＥＣＴ：じっこう（ひょうじあどれすのせんとう）　　　　　　"
+	.db 3
+	.!hira "Ａ＋じゅうじ：かーそるいどう　　Ｂ＋じゅうじ：あどれすへんこう　"
+	.!hira "ＳＴＡＲＴ＋じょうげ：こぴー　（＋みぎ：ぺーすと）　　　　　　　"
+	.!hira "ＳＥＬＥＣＴ：じっこう（ひょうじあどれすせんとうから）　　　　　"
 
 DATA_Register:
 	.db 4
