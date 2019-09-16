@@ -18,8 +18,16 @@
 
 	_count		= $DC
 	_count1		= $DD
-	_reserve	= $DE
-	_reserve1	= $DF
+	_pad1dir8	= $DE
+	_reserve	= $DF
+
+	_curaddrStore = $E0
+	_curaddrStore1 = $E1
+	_selectAddr = $E2
+	_selectAddr1 = $E3
+	_selectN	= $E4
+	_is_pasted = $E5
+	_select_y = $E6
 
 	; ボタン
 	_pad1	= $F0
@@ -42,11 +50,28 @@
 	_SRCA1_ = $FF
 
 ; $0200 : スプライトバッファ
-	MEM_SP	EQU $0200
-; $0300 : BGバッファ
-	MEM_BG	EQU $0300
-; $0400
+	MEM_SP		EQU $0200
+; $0300 : BGバッファ (8行分)
+	MEM_BG		EQU $0300
+	MEM_BG1		EQU $0320
+	MEM_BG2		EQU $0340
+	MEM_BG3		EQU $0360
+	MEM_BG4		EQU $0380
+	MEM_BG5		EQU $03A0
+	MEM_BG6		EQU $03C0
+	MEM_BG7		EQU $03E0
+; $0400 : BGバッファ (8行分)
+	MEM_BG8		EQU $0400
+	MEM_BG9		EQU $0420
+	MEM_BG10	EQU $0440
+	MEM_BG11	EQU $0460
+	MEM_BG12	EQU $0480
+	MEM_BG13	EQU $04A0
+	MEM_BG14	EQU $04C0
+	MEM_BG15	EQU $04E0
+
 ; $0500
+	_copy_buf	= $500 ; $500-$53F
 ; $0600
 ; $0700
 
@@ -73,7 +98,7 @@ macro SET_ADDR ADDR
 	lda #>(ADDR)
 	sta _ADDR_+1
 endm
-macro SET_ADDRPTR ADDR
+macro SET_ADDR_PTR ADDR
 	lda ADDR
 	sta _ADDR_
 	lda ADDR+1
@@ -85,7 +110,7 @@ macro SET_SRCA SRCA
 	lda #>(SRCA)
 	sta _SRCA_+1
 endm
-macro SET_SRCAPTR SRCA
+macro SET_SRCA_PTR SRCA
 	lda SRCA
 	sta _SRCA_
 	lda SRCA+1
@@ -252,6 +277,7 @@ RESET:
 ; メインループ
 MainLoop:
 	jsr GetJoyPad
+	jsr Get8Direction
 	;
 	; 処理
 	jsr SelectRoutine
@@ -275,8 +301,9 @@ MainLoop:
 ; ボタンの組み合わせによって、実行するルーチンを分岐させる
 SelectRoutine:
 	;
-	; 離されていたら padMode をリセット
+	; 離された【次フレーム】に padMode をリセット
 	lda _pad1
+	ora _pad1+2
 	bne +
 		ldx #0
 		stx _padMode
@@ -312,14 +339,14 @@ SelectRoutine:
 
 ; A:1, B:2, start:3, select:4, 十字キー:5
 DATA_SelectRoutine
-	.db 0, 1, 2, 0, 3, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0
-	;    0 1 2 3 
-	;0 : - A B -
-	;4 : e - - -     
-	;8 : S - - -   
-	;C : - - - -  
+	.db 0, 1, 2, 0	; - A B -
+	.db 3, 0, 0, 0	; e - - -     
+	.db 4, 0, 0, 0	; S - - -   
+	.db 0, 0, 0, 0	; - - - -  
+	
 DATA_SelectRoutine_func:
-	.dw nonefunc, MoveCursor, ChangeBaseAddr, Exec, nonefunc, EditHex
+	.dw nonefunc, MoveCursor, ChangeBaseAddr, Exec, OtherFunc
+	.dw EditHex ; 5:十時キー
 ;
 ;///////////////////////////////////////////
 
@@ -367,38 +394,36 @@ GetJoyPad:
 	bpl -
 	rts
 
-EditHex:
-	;
-	; A or B が押した瞬間でなければ Return
-	lda _pad1+1
-	and #pad_A | #pad_B
-	bne +
-		rts
-	+
-	;
-	; 右回り値を取得 (異常値時は Return)
+Get8Direction:
 	lda _pad1
 	LSR_n 4
 	tax
-	lda DATA_Direction2Hex, x
+	lda DATA_Get8Direction, x
+	sta _pad1dir8
+	rts
+
+DATA_Get8Direction:
+	.db $FF, $00, $04, $FF
+	.db $06, $07, $05, $FF
+	.db $02, $01, $03, $FF
+	.db $FF, $FF, $FF, $FF
+
+EditHex:
+	;
+	; 0 - 15 を取得
+	lda _pad1+1
+	ASL_n 3
+	ora _pad1dir8
+	and #$1F
+	tax
+	lda DATA_EditHex, x
+	;
+	; 十時キーを押していない, A B 押していない場合 return
 	bpl +
 		rts
 	+
 	;
-	; 0 - 15 を取得 (初回時 上位4bit化)
-	asl			; 2
-	ldx _pad1+1	; 3
-	cpx #pad_B	; 2
-	bne +		; 2
-		clc		; 2
-		adc #1	; 2
-	+
-	; これでも OK
-	; lda _pad1+1	; 3
-	; lsr		; 2
-	; lsr		; 2
-	; tya		; 2
-	; rol		; 2
+	; 初回時 上位バイト4bit化
 	ldx _is_Hex_Changing
 	bne + ; 初回
 		ASL_n 4
@@ -433,11 +458,11 @@ EditHex:
 	sta _is_Hex_Changing
 	rts
 
-DATA_Direction2Hex:
-	.db $FF, $00, $04, $FF
-	.db $06, $07, $05, $FF
-	.db $02, $01, $03, $FF
-	.db $FF, $FF, $FF, $FF
+DATA_EditHex:
+	.db $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF ; 十時キーのみ (Return)
+	.db $00,$02,$04,$06,$08,$0A,$0C,$0E ; A + 十時キー
+	.db $01,$03,$05,$07,$09,$0B,$0D,$0F ; B + 十時キー
+	.db $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF ; AB + 十時キー, 十時キー押していない (Return)
 
 MoveCursor:		;_x, _y の変更
 	lda _pad1+1
@@ -598,9 +623,6 @@ DATA_ChangeBaseAddr:
 
 Exec: ; 実行
 ;
-;	lda _pad1+1
-;	and #pad_select
-;
 ; A,X,Y のクリア
 	lda #0
 	tax
@@ -608,32 +630,164 @@ Exec: ; 実行
 	WAIT_VBLANK
 	jmp (_base)
 
+;
+; コピペ, 設定画面など
+OtherFunc:
+	;
+	; 初回押下時, カーソルアドレスを保存
+	lda _pad1+1
+	and #pad_start
+	beq +
+		lda #0
+		sta _is_pasted
+		jmp StoreCursorAddr
+	+
+	;
+	; 離し時、コピーを実行
+	lda _pad1+2
+	and #pad_start
+	beq +
+		lda _is_pasted
+		bne ++
+			jmp CopySelectRange
+		++
+	+
+	;
+	; 十時入力に応じた処理を実行
+	lda _pad1+1
+	and #$F0
+	bne +
+		rts
+	+
+	lda _pad1dir8
+	bpl +
+		rts
+	+
+	asl
+	tax
+	lda DATA_OtherFuncTable, x
+	sta _ADDR_
+	lda DATA_OtherFuncTable+1, x
+	sta _ADDR_+1
+	jmp (_ADDR_)
+
+StoreCursorAddr:
+	lda _curaddr
+	and #$FC ; 行頭からコピー
+	sta _curaddrStore
+	ora #$03 ; 行末へ
+	sta _selectAddr
+	lda _curaddr+1
+	sta _curaddrStore+1
+	sta _selectAddr+1
+	lda _y
+	sta _select_y
+	rts
+
+CopySelectRange:
+	jsr calc_SelectRenge
+	SET_ADDR _copy_buf+1
+	SET_SRCA_PTR _curaddrStore
+	SET_N _selectN
+	jsr memcpy
+	lda _selectN
+	sta _copy_buf
+	rts
+
+SelectRangeU:
+	bit _select_y
+	beq +
+		lda _selectAddr
+		sec
+		sbc #4
+		sta _selectAddr
+		dec _select_y
+	+
+	rts
+
+SelectRangeD:
+	lda _select_y
+	cmp #$0F
+	beq +
+		lda _selectAddr
+		clc
+		adc #4
+		sta _selectAddr
+		inc _select_y
+	+
+	rts
+
+SelectPaste:
+	SET_ADDR_PTR _curaddrStore
+	SET_SRCA _copy_buf+1
+	SET_N _copy_buf
+	jsr memcpy
+	inc _is_pasted
+	rts
+
+calc_SelectRenge:
+	;
+	; コピー範囲算出
+	lda _selectAddr
+	sec
+	sbc _curaddrStore
+	sta _selectN
+	;
+	; 逆方向選択時
+	bpl +
+		;
+		; 符号反転(xor #$FF + 1)
+		eor #$FF
+		clc
+		adc #1
+		sta _selectN
+		;
+		; dst を _selectAddr へ変更
+		lda _selectAddr
+		sta _curaddrStore
+		lda _selectAddr+1
+		sta _curaddrStore+1
+	+
+	inc _selectN
+	rts
+
+DATA_OtherFuncTable:
+	.dw SelectRangeU, nonefunc, SelectPaste, nonefunc, SelectRangeD, nonefunc, nonefunc, nonefunc
+
 nonefunc:
 	rts
 
 ; 描画関係
-
 DrawInitialize:
 	;
 	; 事前描画 (タイトル)
-	SET_ARGS MEM_BG+$20*0, DATA_TITLE+1, DATA_TITLE
+	SET_ARGS MEM_BG, DATA_TITLE+1, DATA_TITLE
 	jsr memcpy32
 
-	SET_ARGS MEM_BG+$20*1, DATA_Register+1, DATA_Register
+	SET_ARGS MEM_BG1, DATA_Register+1, DATA_Register
 	jsr memcpy32
-
+	
+	SET_ARGS MEM_BG5, DATA_HELP+1, DATA_HELP
+	jsr memcpy32
 	;
 	; 描画
-	SET_ARGS $2040, MEM_BG+$20*0, DATA_TITLE
+	SET_ARGS $2040, MEM_BG, DATA_TITLE
 	WAIT_VBLANK
 	jsr DrawXLines
 
-	SET_ARGS $22A0, MEM_BG+$20*1, DATA_Register
+	SET_ARGS $22A0, MEM_BG1, DATA_Register
+	jsr DrawXLines
+	jsr DrawScrollZero
+
+	SET_ARGS $2320, MEM_BG5, DATA_HELP
+	WAIT_VBLANK
 	jsr DrawXLines
 	jsr DrawScrollZero
 	;
 	; メモリの後始末
-	SET_ARGS MEM_BG, #0, #0 ; SRCA はアドレスではなく、値として使用. N は 256 となる.
+	SET_ARGS MEM_BG, #0, #0 ; SRCA はアドレスではなく、値として使用. memset の N は 0 指定で 256 扱い.
+	jsr memset
+	SET_ARGS MEM_BG8, #0, #0
 	jsr memset
 
 	rts
@@ -659,7 +813,7 @@ DATA_Register:
 DrawHex16Lines:
 	; #$2081, _base
 	SET_ADDR $2081
-	SET_SRCAPTR _base
+	SET_SRCA_PTR _base
 	jsr DrawHex8Lines
 
 	; 次のアドレス
@@ -682,11 +836,11 @@ DrawHex8Lines:
 	
 	; 準備
 	SET_ADDR MEM_BG
-;	SET_SRCAPTR _base ; 引数で入力済み
+;	SET_SRCA_PTR _base ; 引数で入力済み
 	jsr BufDraw_addr_hex_32x8
 
 	; 描画
-	SET_ADDRPTR _MM_ ; ★ #$2081 [2回目:#$2181]
+	SET_ADDR_PTR _MM_ ; ★ #$2081 [2回目:#$2181]
 
 	WAIT_VBLANK
 	jsr Draw8Lines
