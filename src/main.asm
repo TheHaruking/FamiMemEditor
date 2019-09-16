@@ -21,13 +21,13 @@
 	_pad1dir8	= $DE
 	_reserve	= $DF
 
-	_selectedAddr = $E0
-	_selectedAddr1 = $E1
-	_selectAddr = $E2
-	_selectAddr1 = $E3
-	_selectN	= $E4
-	_is_pasted = $E5
-	_select_y = $E6
+	_select_y		= $E0
+	_selectN		= $E1
+	_selectedAddr	= $E2
+	_selectedAddr1	= $E3
+	_is_pasted		= $E4
+	_is_selecting	= $E5
+	_select_y_View	= $E6
 
 	; ボタン
 	_pad1	= $F0
@@ -201,6 +201,17 @@ macro WAIT_VBLANK
 	-	bit $2002
 	bpl -
 endm
+
+macro SET_SPBUF N, y, chr, attr, x
+	lda y		; Y座標
+	sta (MEM_SP+(N*4)+0)
+	lda chr		; キャラ番号
+	sta (MEM_SP+(N*4)+1)
+	lda attr	; 反転・優先順位
+	sta (MEM_SP+(N*4)+2)
+	lda x		; X座標
+	sta (MEM_SP+(N*4)+3)
+endm
 ;///////////////////////////////////////////
 ;// 関数
 ;
@@ -283,18 +294,29 @@ MainLoop:
 	jsr SelectRoutine
 	jsr CalcCursor
 	;
-	; テスト
+	; カウンタ
 	inc _count
 	bne +
 		inc _count+1
 	+
 	;
-	; 描画	
-	jsr DrawHex16Lines
-	lda #0
-	sta _N_
-	jsr Draw1Sprite
-	
+	; 描画
+	lda _is_selecting
+	beq +
+		jsr DrawSelectingCursor
+		jmp ++
+	+
+	lda _pad1+2
+	and #pad_start
+	beq +
+		jsr CleanSelectingCursor
+		jmp ++
+	+
+	; 通常時
+		jsr DrawHex16Lines
+		SET_N #0
+		jsr Draw1Sprite
+	++
 	jmp MainLoop
 
 ;
@@ -640,17 +662,23 @@ OtherFunc:
 	beq +
 		lda #0
 		sta _is_pasted
-		jmp StartSelectRange
+		lda #1
+		sta _is_selecting
+		jsr StartSelectRange
+		rts
 	+
 	;
-	; 離し時、コピーを実行
+	; 離し時、コピーを実行 (ペースト実行後を除く)
 	lda _pad1+2
 	and #pad_start
 	beq +
 		lda _is_pasted
 		bne ++
-			jmp CopySelectRange
+			jsr CopySelectRange
 		++
+		lda #0
+		sta _is_selecting
+		rts
 	+
 	;
 	; 十時入力に応じた処理を実行
@@ -674,6 +702,7 @@ OtherFunc:
 StartSelectRange:
 	lda _y
 	sta _select_y
+	jsr calc_select_y_view
 	rts
 
 CopySelectRange:
@@ -693,6 +722,7 @@ SelectRangeU:
 		dec _select_y
 	+
 	and #$0F
+	jsr calc_select_y_view
 	rts
 
 SelectRangeD:
@@ -702,6 +732,7 @@ SelectRangeD:
 		inc _select_y
 	+
 	and #$0F
+	jsr calc_select_y_view
 	rts
 
 SelectPaste:
@@ -710,6 +741,17 @@ SelectPaste:
 	SET_N _copy_buf
 	jsr memcpy
 	inc _is_pasted
+	rts
+
+calc_select_y_view:
+	;
+	; y, x カーソル座標 算出
+	lda _select_y
+	ASL_n 3
+	clc
+	adc #Y_OFS 	; 表示調整オフセットを足す
+	sta _select_y_View
+	dec _select_y_View	; スプライトは下に 1pxcel ずれる。さらに調整
 	rts
 
 calc_SelectRenge:
@@ -733,7 +775,7 @@ calc_SelectRenge:
 		adc #4
 		sta _selectN
 		;
-		; dst を _selectAddr へ変更
+		; dst を _selectedAddr へ変更
 		lda _select_y
 		ASL_n 2
 		clc
@@ -750,7 +792,7 @@ calc_SelectRenge:
 		adc #4
 		sta _selectN
 		;
-		; dst を _selectAddr へ変更
+		; dst を _selectedAddr へ変更
 		lda _y
 		ASL_n 2
 		clc
@@ -770,6 +812,10 @@ nonefunc:
 ; 描画関係
 DrawInitialize:
 	;
+	; スプライト初期化 (これがないと EverDrive 起動時、ゴミが表示される)
+	WAIT_VBLANK
+	jsr DrawAllSprites
+	;
 	; 事前描画 (タイトル)
 	SET_ARGS MEM_BG, DATA_TITLE+1, DATA_TITLE
 	jsr memcpy32
@@ -777,19 +823,21 @@ DrawInitialize:
 	SET_ARGS MEM_BG1, DATA_Register+1, DATA_Register
 	jsr memcpy32
 	
-	SET_ARGS MEM_BG5, DATA_HELP+1, DATA_HELP
+	SET_ARGS MEM_BG7, DATA_HELP+1, DATA_HELP
 	jsr memcpy32
 	;
 	; 描画
 	SET_ARGS $2040, MEM_BG, DATA_TITLE
 	WAIT_VBLANK
 	jsr DrawXLines
+	jsr DrawScrollZero
 
-	SET_ARGS $22A0, MEM_BG1, DATA_Register
+	SET_ARGS $2280, MEM_BG1, DATA_Register
+	WAIT_VBLANK
 	jsr DrawXLines
 	jsr DrawScrollZero
 
-	SET_ARGS $2340, MEM_BG5, DATA_HELP
+	SET_ARGS $2340, MEM_BG7, DATA_HELP
 	WAIT_VBLANK
 	jsr DrawXLines
 	jsr DrawScrollZero
@@ -804,20 +852,24 @@ DrawInitialize:
 
 DATA_TITLE:
 	.db 1 ; memcpy32 に渡す値
-	.!hira "010101020203030303　　ふぁみめむ99えでぃた　　030303030202010101"
+	.!hira "010101020203030303　　ふぁみめむ80えでぃた　　030303030202010101"
 
 DATA_HELP
-	.db 3
-	.!hira "Ａ＋じゅうじ：かーそるいどう　　Ｂ＋じゅうじ：あどれすへんこう　"
-	.!hira "ＳＴＡＲＴ＋じょうげ：こぴー　（＋みぎ：ぺーすと）　　　　　　　"
-	.!hira "ＳＥＬＥＣＴ：じっこう（ひょうじあどれすせんとうから）　　　　　"
+	.db 4
+	;.!hira "Ａ＋じゅうじ：かーそるいどう　　Ｂ＋じゅうじ：あどれすへんこう　"
+	.db $14,$2b,$1a,$1b,$19,$18,$3a,$8b,$2d,$9d,$cb,$84,$a9,$86,$00,$00,$17,$2b,$1a,$1b,$3a,$af,$d3,$84,$97,$a6,$84,$26,$93,$b4,$2d,$00
+	.db $15,$2b,$19,$18,$3a,$ba,$2d,$98,$84,$a9,$86,$00,$00,$00,$00,$00,$17,$2b,$18,$3a,$ba,$2d,$99,$a8,$00,$00,$00,$00,$00,$00,$00,$00
+	.db $7f,$2b,$14,$15,$3a,$ab,$c5,$86,$ca,$c7,$8f,$00,$00,$00,$00,$00,$16,$3a,$98,$a3,$93,$86,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+	.db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
 
 DATA_Register:
-	.db 4
-	.db $41,$3a,$38,$38,$00,$50,$43,$3a,$30,$30,$30,$32,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
-	.db $58,$3a,$30,$30,$00,$00,$00,$4e,$56,$2d,$42,$2d,$49,$5a,$43,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
-	.db $59,$3a,$30,$30,$00,$50,$3a,$a9,$a8,$a9,$a8,$a8,$a8,$a8,$a9,$41,$31,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
-	.db $53,$3a,$46,$44,$3a,$5b,$30,$30,$00,$30,$30,$20,$30,$30,$20,$30,$30,$5d,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+	.db 6
+	.db $dc,$d9,$d9,$d9,$d9,$d9,$d9,$d9,$d9,$d9,$d9,$d9,$d9,$d9,$d9,$d9,$d9,$d9,$d9,$dd,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+	.db $da,$41,$3a,$38,$38,$00,$e0,$3a,$30,$30,$30,$32,$00,$00,$00,$00,$00,$00,$00,$da,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+	.db $da,$58,$3a,$30,$30,$00,$00,$00,$4e,$56,$2d,$42,$2d,$49,$5a,$43,$00,$00,$00,$da,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+	.db $da,$59,$3a,$30,$30,$00,$50,$3a,$11,$10,$11,$11,$10,$11,$10,$11,$42,$35,$00,$da,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+	.db $da,$53,$3a,$46,$44,$3a,$5b,$30,$30,$00,$30,$30,$20,$30,$30,$20,$30,$30,$5d,$da,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+	.db $de,$d9,$d9,$d9,$d9,$d9,$d9,$d9,$d9,$d9,$d9,$d9,$d9,$d9,$d9,$d9,$d9,$d9,$d9,$df,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
 
 DrawHex16Lines:
 	; #$2081, _base
@@ -857,6 +909,26 @@ DrawHex8Lines:
 
 	POP_REG 0,0,1,1,0
 	rts
+
+DrawSelectingCursor:
+	SET_SPBUF 1, _y_View, #1, #7, #0
+	SET_SPBUF 2, _y_View, #1, #7, #0
+	SET_SPBUF 3, _select_y_View, #9, #0, #0
+	SET_SPBUF 4, _select_y_View, #9, #0, #0
+
+	WAIT_VBLANK
+	jsr DrawAllSprites 
+	rts
+
+CleanSelectingCursor:
+	SET_SPBUF 1, 240, #1, #0, #0
+	SET_SPBUF 2, 240, #1, #0, #0
+	SET_SPBUF 3, 240, #9, #0, #0
+	SET_SPBUF 4, 240, #9, #0, #0
+	WAIT_VBLANK
+	jsr DrawAllSprites 
+	rts
+
 
 ;///////////////////////////////////////////
 ; 汎用関数
