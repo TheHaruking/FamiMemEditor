@@ -273,7 +273,7 @@ RESET:
 	sta #$2005
 	;
 	; 0番スプライト カーソル
-	lda #$85 ; キャラ番号
+	lda #$09 ; キャラ番号
 	sta MEM_SP + 0*4 + 1
 	jsr MoveCursor	
 	;
@@ -300,7 +300,8 @@ MainLoop:
 		inc _count+1
 	+
 	;
-	; 描画
+	; ■ 描画
+	; 選択カーソル
 	lda _is_selecting
 	beq +
 		jsr DrawSelectingCursor
@@ -310,9 +311,9 @@ MainLoop:
 	and #pad_start
 	beq +
 		jsr CleanSelectingCursor
-		jmp ++
 	+
-	; 通常時
+	;
+	; メモリビュワー
 		jsr DrawHex16Lines
 		SET_N #0
 		jsr Draw1Sprite
@@ -741,6 +742,8 @@ SelectPaste:
 	SET_N _copy_buf
 	jsr memcpy
 	inc _is_pasted
+	lda #0
+	sta _is_selecting
 	rts
 
 calc_select_y_view:
@@ -833,9 +836,9 @@ DrawInitialize:
 	jsr DrawScrollZero
 
 	SET_ARGS $2280, MEM_BG1, DATA_Register
-	WAIT_VBLANK
-	jsr DrawXLines
-	jsr DrawScrollZero
+	;WAIT_VBLANK
+	;jsr DrawXLines
+	;jsr DrawScrollZero
 
 	SET_ARGS $2340, MEM_BG7, DATA_HELP
 	WAIT_VBLANK
@@ -872,13 +875,13 @@ DATA_Register:
 	.db $de,$d9,$d9,$d9,$d9,$d9,$d9,$d9,$d9,$d9,$d9,$d9,$d9,$d9,$d9,$d9,$d9,$d9,$d9,$df,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
 
 DrawHex16Lines:
-	; #$2081, _base
-	SET_ADDR $2081
+	; #$2080, _base
+	SET_ADDR $2080
 	SET_SRCA_PTR _base
 	jsr DrawHex8Lines
 
 	; 次のアドレス
-	inc _ADDR_+1 ; #$2181
+	inc _ADDR_+1 ; #$2180
 	SET_N #$20
 	jsr add_16_SRCA
 
@@ -901,7 +904,7 @@ DrawHex8Lines:
 	jsr BufDraw_addr_hex_32x8
 
 	; 描画
-	SET_ADDR_PTR _MM_ ; ★ #$2081 [2回目:#$2181]
+	SET_ADDR_PTR _MM_ ; ★ #$2080 [2回目:#$2180]
 
 	WAIT_VBLANK
 	jsr Draw8Lines
@@ -911,20 +914,20 @@ DrawHex8Lines:
 	rts
 
 DrawSelectingCursor:
-	SET_SPBUF 1, _y_View, #1, #7, #0
-	SET_SPBUF 2, _y_View, #1, #7, #0
-	SET_SPBUF 3, _select_y_View, #9, #0, #0
-	SET_SPBUF 4, _select_y_View, #9, #0, #0
+	SET_SPBUF 1, _y_View, #$18, #0, #5*8
+	SET_SPBUF 2, _y_View, #$19, #0, #17*8
+	SET_SPBUF 3, _select_y_View, #$18, #0, #5*8
+	SET_SPBUF 4, _select_y_View, #$19, #0, #17*8
 
 	WAIT_VBLANK
 	jsr DrawAllSprites 
 	rts
 
 CleanSelectingCursor:
-	SET_SPBUF 1, 240, #1, #0, #0
-	SET_SPBUF 2, 240, #1, #0, #0
-	SET_SPBUF 3, 240, #9, #0, #0
-	SET_SPBUF 4, 240, #9, #0, #0
+	SET_SPBUF 1, #0, #0, #0, #0
+	SET_SPBUF 2, #0, #0, #0, #0
+	SET_SPBUF 3, #0, #0, #0, #0
+	SET_SPBUF 4, #0, #0, #0, #0
 	WAIT_VBLANK
 	jsr DrawAllSprites 
 	rts
@@ -1029,10 +1032,13 @@ BufDraw_addr_hex_32x8:
 	ldx #8
 	ldy #0
 	-
+		SET_N #1 ; 1つ空ける
+		jsr add_16_ADDR
+
 		jsr BufDraw_addr_2bytes ;(+5)
 		jsr BufDraw_hex_4bytes ;(+12)
 
-		SET_N #(32-(5+12))
+		SET_N #(32-(1+5+12))
 		jsr add_16_ADDR
 
 		SET_N #4
