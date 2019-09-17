@@ -28,6 +28,15 @@
 	_is_pasted		= $E4
 	_is_selecting	= $E5
 	_select_y_View	= $E6
+	_select_reserve = $E7
+
+	_reg_a	= $E8
+	_reg_x	= $E9
+	_reg_y	= $EA
+	_reg_s	= $EB
+	_reg_pc = $EC
+	_reg_pc1 = $ED
+	_reg_p	= $EE
 
 	; ボタン
 	_pad1	= $F0
@@ -48,11 +57,12 @@
 	_ADDR1_ = $FD
 	_SRCA_  = $FE ; 16 bit のアドレスを渡すのに使用
 	_SRCA1_ = $FF
-
+; $0100 : スタック
+	STACK		EQU $0100
 ; $0200 : スプライトバッファ
 	MEM_SP		EQU $0200
 ; $0300 : BGバッファ (8行分)
-	MEM_BG		EQU $0300
+	MEM_BG0		EQU $0300
 	MEM_BG1		EQU $0320
 	MEM_BG2		EQU $0340
 	MEM_BG3		EQU $0360
@@ -76,8 +86,6 @@
 ; $0700
 
 ;■ 定数
-	SRAM	EQU $6000
-
 	; ボタン (一般のファミコンゲームとは逆になっているが、こちらが好み。)
 	pad_A		EQU #$01
 	pad_B		EQU #$02
@@ -90,6 +98,41 @@
 
 	Y_OFS		EQU $20 ; 上4行空けてカーソルを表示する際のオフセット値
 	X_OFS		EQU $30 ; "0000:" の分を空けてカーソルを表示する際のオフセット値
+	;
+	; メモリアドレス
+	SRAM	EQU $6000
+	;
+	; PPU アドレス
+	NAMETABLE00 EQU $2000
+	NAMETABLE01 EQU $2020
+	NAMETABLE02 EQU $2040
+	NAMETABLE03 EQU $2060
+	NAMETABLE04 EQU $2080
+	NAMETABLE05 EQU $20A0
+	NAMETABLE06 EQU $20C0
+	NAMETABLE07 EQU $20E0
+	NAMETABLE08 EQU $2100
+	NAMETABLE09 EQU $2120
+	NAMETABLE10 EQU $2140
+	NAMETABLE11 EQU $2160
+	NAMETABLE12 EQU $2180
+	NAMETABLE13 EQU $21A0
+	NAMETABLE14 EQU $21C0
+	NAMETABLE15 EQU $21E0
+	NAMETABLE16 EQU $2200
+	NAMETABLE17 EQU $2220
+	NAMETABLE18 EQU $2240
+	NAMETABLE19 EQU $2260
+	NAMETABLE20 EQU $2280
+	NAMETABLE21 EQU $22A0
+	NAMETABLE22 EQU $22C0
+	NAMETABLE23 EQU $22E0
+	NAMETABLE24 EQU $2300
+	NAMETABLE25 EQU $2320
+	NAMETABLE26 EQU $2340
+	NAMETABLE27 EQU $2360
+	NAMETABLE28 EQU $2380
+	NAMETABLE29 EQU $23A0
 ;///////////////////////////////////////////
 ; macro
 macro SET_ADDR ADDR
@@ -646,6 +689,13 @@ DATA_ChangeBaseAddr:
 
 Exec: ; 実行
 ;
+; 押した瞬間でなければ Return
+	lda _pad1+1
+	and #pad_select
+	bne +
+		rts
+	+
+;
 ; A,X,Y のクリア
 	lda #0
 	tax
@@ -700,22 +750,27 @@ OtherFunc:
 	sta _ADDR_+1
 	jmp (_ADDR_)
 
+;
+; 範囲選択開始
 StartSelectRange:
 	lda _y
 	sta _select_y
 	jsr calc_select_y_view
 	rts
-
+;
+; 選択範囲コピー
 CopySelectRange:
 	jsr calc_SelectRenge
 	SET_ADDR _copy_buf+1
 	SET_SRCA_PTR _selectedAddr
 	SET_N _selectN
 	jsr memcpy
+
 	lda _selectN
 	sta _copy_buf
 	rts
-
+;
+; 範囲選択 (↑)
 SelectRangeU:
 	lda _select_y
 	cmp #$01
@@ -725,7 +780,8 @@ SelectRangeU:
 	and #$0F
 	jsr calc_select_y_view
 	rts
-
+;
+; 範囲選択 (↓)
 SelectRangeD:
 	lda _select_y
 	cmp #$0F
@@ -736,6 +792,8 @@ SelectRangeD:
 	jsr calc_select_y_view
 	rts
 
+;
+; ペースト
 SelectPaste:
 	SET_ADDR_PTR _curaddr
 	SET_SRCA _copy_buf+1
@@ -746,6 +804,8 @@ SelectPaste:
 	sta _is_selecting
 	rts
 
+;
+; select_y カーソル座標算出
 calc_select_y_view:
 	;
 	; y, x カーソル座標 算出
@@ -757,6 +817,8 @@ calc_select_y_view:
 	dec _select_y_View	; スプライトは下に 1pxcel ずれる。さらに調整
 	rts
 
+;
+; 選択範囲算出
 calc_SelectRenge:
 	;
 	; コピー範囲算出
@@ -811,7 +873,7 @@ DATA_OtherFuncTable:
 
 nonefunc:
 	rts
-
+;
 ; 描画関係
 DrawInitialize:
 	;
@@ -820,7 +882,7 @@ DrawInitialize:
 	jsr DrawAllSprites
 	;
 	; 事前描画 (タイトル)
-	SET_ARGS MEM_BG, DATA_TITLE+1, DATA_TITLE
+	SET_ARGS MEM_BG0, DATA_TITLE+1, DATA_TITLE
 	jsr memcpy32
 
 	SET_ARGS MEM_BG1, DATA_Register+1, DATA_Register
@@ -830,15 +892,15 @@ DrawInitialize:
 	jsr memcpy32
 	;
 	; 描画
-	SET_ARGS $2040, MEM_BG, DATA_TITLE
+	SET_ARGS $2040, MEM_BG0, DATA_TITLE
 	WAIT_VBLANK
 	jsr DrawXLines
 	jsr DrawScrollZero
 
 	SET_ARGS $2280, MEM_BG1, DATA_Register
-	;WAIT_VBLANK
-	;jsr DrawXLines
-	;jsr DrawScrollZero
+	WAIT_VBLANK
+	jsr DrawXLines
+	jsr DrawScrollZero
 
 	SET_ARGS $2340, MEM_BG7, DATA_HELP
 	WAIT_VBLANK
@@ -846,7 +908,7 @@ DrawInitialize:
 	jsr DrawScrollZero
 	;
 	; メモリの後始末
-	SET_ARGS MEM_BG, #0, #0 ; SRCA はアドレスではなく、値として使用. memset の N は 0 指定で 256 扱い.
+	SET_ARGS MEM_BG0, #0, #0 ; SRCA はアドレスではなく、値として使用. memset の N は 0 指定で 256 扱い.
 	jsr memset
 	SET_ARGS MEM_BG8, #0, #0
 	jsr memset
@@ -868,13 +930,18 @@ DATA_HELP
 DATA_Register:
 	.db 6
 	.db $dc,$d9,$d9,$d9,$d9,$d9,$d9,$d9,$d9,$d9,$d9,$d9,$d9,$d9,$d9,$d9,$d9,$d9,$d9,$dd,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
-	.db $da,$41,$3a,$38,$38,$00,$e0,$3a,$30,$30,$30,$32,$00,$00,$00,$00,$00,$00,$00,$da,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
-	.db $da,$58,$3a,$30,$30,$00,$00,$00,$4e,$56,$2d,$42,$2d,$49,$5a,$43,$00,$00,$00,$da,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
-	.db $da,$59,$3a,$30,$30,$00,$50,$3a,$11,$10,$11,$11,$10,$11,$10,$11,$42,$35,$00,$da,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
-	.db $da,$53,$3a,$46,$44,$3a,$5b,$30,$30,$00,$30,$30,$20,$30,$30,$20,$30,$30,$5d,$da,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+	.db $da,$41,$3a,$2d,$2d,$00,$e0,$3a,$2d,$2d,$2d,$2d,$00,$00,$00,$00,$00,$00,$00,$da,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+	.db $da,$58,$3a,$2d,$2d,$00,$00,$00,$4e,$56,$2d,$42,$2d,$49,$5a,$43,$00,$00,$00,$da,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+	.db $da,$59,$3a,$2d,$2d,$00,$50,$3a,$10,$10,$10,$10,$10,$10,$10,$10,$2d,$2d,$00,$da,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+	.db $da,$53,$3a,$2d,$2d,$3a,$5b,$2d,$2d,$00,$2d,$2d,$20,$2d,$2d,$20,$2d,$2d,$5d,$da,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
 	.db $de,$d9,$d9,$d9,$d9,$d9,$d9,$d9,$d9,$d9,$d9,$d9,$d9,$d9,$d9,$d9,$d9,$d9,$d9,$df,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
 
 DrawHex16Lines:
+	;
+	; BG バッファを初期化
+	SET_ARGS MEM_BG0, #0, #0 ; 256バイト扱い
+	jsr memset
+
 	; #$2080, _base
 	SET_ADDR $2080
 	SET_SRCA_PTR _base
@@ -885,7 +952,7 @@ DrawHex16Lines:
 	SET_N #$20
 	jsr add_16_SRCA
 
-	; #$2181, _base+$20
+	; #$2180, _base+$20
 	jsr DrawHex8Lines
 	rts
 
@@ -899,7 +966,7 @@ DrawHex8Lines:
 	SET_MMPTR _ADDR_
 	
 	; 準備
-	SET_ADDR MEM_BG
+	SET_ADDR MEM_BG0
 ;	SET_SRCA_PTR _base ; 引数で入力済み
 	jsr BufDraw_addr_hex_32x8
 
@@ -954,16 +1021,17 @@ memset:
 ; _SRCA_ : ソースアドレス
 ; _N_ : サイズ
 memcpy:
-	PUSH_REG 0,1,0,0,0
+	PUSH_REG 1,1,0,0,0
 
 	ldy #0
+	ldx _N_
 	-	lda (_SRCA_), y
 		sta (_ADDR_), y
 		iny
-		cpy _N_
+		dex
 	bne -
 
-	POP_REG 0,1,0,0,0
+	POP_REG 1,1,0,0,0
 	rts
 
 ; _ADDR_ : 対象アドレス
@@ -1140,7 +1208,7 @@ if 0
 		ldy Draw8Lines_table, x ; MEM_BG の インデックス
 		i=0
 	    REPT 16
-			lda MEM_BG+i, y
+			lda MEM_BG0+i, y
 			sta #$2007
 			i=i+1
 	    ENDR
@@ -1161,7 +1229,7 @@ else
 
 	i=0
 	REPT 256
-		lda MEM_BG+i
+		lda MEM_BG0+i
 		sta #$2007
 		i=i+1
 	ENDR
@@ -1261,25 +1329,129 @@ NMI:
 
 ;///////////////////////////////////////////
 BREAK:
-	pha
-	PUSH_REG 1,1,0,0,0
+	sta _reg_a
+	stx _reg_x
+	sty _reg_y
+	tsx
+	stx _reg_s
+	lda STACK+1, x
+	sta _reg_p
 	;
 	; ■ rti 戻り先補正
 	; BREAK 命令の戻りアドレスは +1 される.
-	; 補正のため, スタック5番目のPC下位バイトに対し dec する.
-	; 参考図 : [ y, x, a, P, <PC0>, PC1 ]
+	; 補正のため, スタック2番目のPC下位バイトに対し dec する.
+	; 参考図 : [ P, <PC0>, PC1 ]
 	tsx
-	dec $0100+5, x
-	bcc +
-		dec $0100+6, x
+	dec STACK+2, x
+	lda #$FF
+	cmp STACK+2, x
+	bne +
+		dec STACK+3, x
 	+
 
+	; 
+	lda STACK+2, x
+	sta _reg_pc
+	lda STACK+3, x
+	sta _reg_pc+1
+	dec _reg_pc
+
+	;
+	; レジスタ情報表示
 	jsr DrawRegisters
 
-	POP_REG 1,1,0,0,0
-	pla
+	;
+	; ボタン入力待機
+	;-
+	;	jsr GetJoyPad
+	;	WAIT_VBLANK
+	;	lda _pad1+1
+	;	and #pad_start
+	;beq -
+
+	ldy _reg_y
+	ldx _reg_x
+	lda _reg_a
 	rti
 
 ;///////////////////////////////////////////
 DrawRegisters:
+	;
+	; 枠組み描画
+	SET_ARGS MEM_BG0, DATA_Register+1, DATA_Register
+	jsr memcpy32
+	;
+	; A レジスタ
+	SET_ADDR MEM_BG1+3
+	SET_N _reg_a
+	jsr bin2hex
+	;
+	; X レジスタ
+	SET_ADDR MEM_BG2+3
+	SET_N _reg_x
+	jsr bin2hex
+	;
+	; Y レジスタ
+	SET_ADDR MEM_BG3+3
+	SET_N _reg_y
+	jsr bin2hex
+	;
+	; S レジスタ [上位4 バイト]
+	SET_ADDR MEM_BG4+3
+	SET_N _reg_s
+	jsr bin2hex
+
+	ldx _reg_s
+	i=0
+	rept 4
+		SET_ADDR MEM_BG4 + 7+(i*3)
+		lda STACK+i, x
+		sta _N_
+		jsr bin2hex
+		i=i+1
+	endr
+	;
+	; PC レジスタ
+	SET_ADDR MEM_BG1+8
+	SET_N _reg_pc1
+	jsr bin2hex
+	SET_ADDR MEM_BG1+10
+	SET_N _reg_pc
+	jsr bin2hex
+	;
+	; P レジスタ XX
+	SET_ADDR MEM_BG3+16
+	SET_N _reg_p
+	jsr bin2hex
+	;
+	; P レジスタ ○○○○○○○○
+	lda #$01
+	sta _N_ ; AND ビット
+	ldx #7 ; カウンタ
+	-
+		lda _N_
+		bit _reg_p
+		beq +
+			lda DATA_StatusBitColor, x
+			sta MEM_BG3+8, x
+		+
+		asl _N_
+		dex
+	bpl -
+	;
+	; 描画
+	SET_ARGS NAMETABLE20, MEM_BG0, DATA_Register
+	WAIT_VBLANK
+	WAIT_VBLANK
+	jsr DrawXLines
+	jsr DrawScrollZero
 	rts
+
+DATA_StatusBitColor:
+	.db $13,$13,$12,$12,$12,$12,$13,$13
+
+;０１２３４５６７８９０１２３４５６７８
+;｜Ａ：ＸＸ　PC：ＸＸＸＸ　　　　　　　
+;｜Ｘ：ＸＸ　　　ＮＶ－Ｂ－ＩＺＣ　　　
+;｜Ｙ：ＸＸ　Ｐ：●●●●●●●●ＸＸ　
+;｜Ｓ：ＸＸ　［ＸＸ　ＸＸ　ＸＸ　ＸＸ］
