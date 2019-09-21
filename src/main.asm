@@ -37,6 +37,7 @@
 	_reg_pc = $EC
 	_reg_pc1 = $ED
 	_reg_p	= $EE
+	_reg_pc_last = $EF
 
 	; ボタン
 	_pad1	= $F0
@@ -60,7 +61,71 @@
 ; $0100 : スタック
 	STACK		EQU $0100
 ; $0200 : スプライトバッファ
-	MEM_SP		EQU $0200
+	MEM_SP0		EQU $0200
+	MEM_SP1		EQU $0204
+	MEM_SP2		EQU $0208
+	MEM_SP3		EQU $020C
+	MEM_SP4		EQU $0210
+	MEM_SP5		EQU $0214
+	MEM_SP6		EQU $0218
+	MEM_SP7		EQU $021C
+	MEM_SP8		EQU $0220
+	MEM_SP9		EQU $0224
+	MEM_SP10	EQU $0228
+	MEM_SP11	EQU $022C
+	MEM_SP12	EQU $0230
+	MEM_SP13	EQU $0234
+	MEM_SP14	EQU $0238
+	MEM_SP15	EQU $023C
+	MEM_SP16	EQU $0240
+	MEM_SP17	EQU $0244
+	MEM_SP18	EQU $0248
+	MEM_SP19	EQU $024C
+	MEM_SP20	EQU $0250
+	MEM_SP21	EQU $0254
+	MEM_SP22	EQU $0258
+	MEM_SP23	EQU $025C
+	MEM_SP24	EQU $0260
+	MEM_SP25	EQU $0264
+	MEM_SP26	EQU $0268
+	MEM_SP27	EQU $026C
+	MEM_SP28	EQU $0270
+	MEM_SP29	EQU $0274
+	MEM_SP30	EQU $0278
+	MEM_SP31	EQU $027C
+	MEM_SP32	EQU $0280
+	MEM_SP33	EQU $0284
+	MEM_SP34	EQU $0288
+	MEM_SP35	EQU $028C
+	MEM_SP36	EQU $0290
+	MEM_SP37	EQU $0294
+	MEM_SP38	EQU $0298
+	MEM_SP39	EQU $029C
+	MEM_SP40	EQU $02A0
+	MEM_SP41	EQU $02A4
+	MEM_SP42	EQU $02A8
+	MEM_SP43	EQU $02AC
+	MEM_SP44	EQU $02B0
+	MEM_SP45	EQU $02B4
+	MEM_SP46	EQU $02B8
+	MEM_SP47	EQU $02BC
+	MEM_SP48	EQU $02C0
+	MEM_SP49	EQU $02C4
+	MEM_SP50	EQU $02C8
+	MEM_SP51	EQU $02CC
+	MEM_SP52	EQU $02D0
+	MEM_SP53	EQU $02D4
+	MEM_SP54	EQU $02D8
+	MEM_SP55	EQU $02DC
+	MEM_SP56	EQU $02E0
+	MEM_SP57	EQU $02E4
+	MEM_SP58	EQU $02E8
+	MEM_SP59	EQU $02EC
+	MEM_SP60	EQU $02F0
+	MEM_SP61	EQU $02F4
+	MEM_SP62	EQU $02F8
+	MEM_SP63	EQU $02FC
+
 ; $0300 : BGバッファ (8行分)
 	MEM_BG0		EQU $0300
 	MEM_BG1		EQU $0320
@@ -247,13 +312,13 @@ endm
 
 macro SET_SPBUF N, y, chr, attr, x
 	lda y		; Y座標
-	sta (MEM_SP+(N*4)+0)
+	sta (MEM_SP0+(N*4)+0)
 	lda chr		; キャラ番号
-	sta (MEM_SP+(N*4)+1)
+	sta (MEM_SP0+(N*4)+1)
 	lda attr	; 反転・優先順位
-	sta (MEM_SP+(N*4)+2)
+	sta (MEM_SP0+(N*4)+2)
 	lda x		; X座標
-	sta (MEM_SP+(N*4)+3)
+	sta (MEM_SP0+(N*4)+3)
 endm
 ;///////////////////////////////////////////
 ;// 関数
@@ -317,7 +382,7 @@ RESET:
 	;
 	; 0番スプライト カーソル
 	lda #$09 ; キャラ番号
-	sta MEM_SP + 0*4 + 1
+	sta MEM_SP0 + 1
 	jsr MoveCursor	
 	;
 	; PPU 有効化・NMI はそのまま
@@ -342,6 +407,10 @@ MainLoop:
 	bne +
 		inc _count+1
 	+
+	;
+	; カーソル
+	lda #$09 ; キャラ番号
+	sta MEM_SP0 + 1
 	;
 	; ■ 描画
 	; 選択カーソル
@@ -604,9 +673,9 @@ CalcCursor:
 	;
 	; カーソル処理
 	lda _y_View ; Y座標
-	sta MEM_SP + 0*4 + 0
+	sta MEM_SP0 + 0
 	lda _x_View ; X座標
-	sta MEM_SP + 0*4 + 3
+	sta MEM_SP0 + 3
 	;
 	; カレントアドレス計算
 	lda _base
@@ -1273,20 +1342,20 @@ Draw1Sprite:
 	ASL_n 2
 	tay ; インデックスを計算
 
-	lda MEM_SP, y ; Y座標
+	lda MEM_SP0, y ; Y座標
 	sta $2004
-	lda MEM_SP+1, y ; キャラ番号
+	lda MEM_SP0+1, y ; キャラ番号
 	sta $2004
-	lda MEM_SP+2, y ; 反転・優先順位
+	lda MEM_SP0+2, y ; 反転・優先順位
 	sta $2004
-	lda MEM_SP+3, y ; X座標
+	lda MEM_SP0+3, y ; X座標
 	sta $2004
 
 	POP_REG 0,1,0,0,0
 	rts
 
 DrawAllSprites:
-	lda #>MEM_SP
+	lda #>MEM_SP0
 	sta $4014
 	rts
 
@@ -1329,6 +1398,8 @@ NMI:
 
 ;///////////////////////////////////////////
 BREAK:
+	;
+	; 保存
 	sta _reg_a
 	stx _reg_x
 	sty _reg_y
@@ -1350,11 +1421,23 @@ BREAK:
 	+
 
 	; 
+	; 前回の PC を保存してから スタックから PC を読み込み
+	lda _reg_pc
+	sta _reg_pc_last
 	lda STACK+2, x
 	sta _reg_pc
 	lda STACK+3, x
 	sta _reg_pc+1
 	dec _reg_pc
+	;
+	; 連続した BRK (PC が前回の+1) だった場合、Return (上位PCは見ない)
+	lda _reg_pc
+	sec
+	sbc _reg_pc_last
+	cmp #1
+	bne +
+		jmp +end
+	+
 
 	;
 	; レジスタ情報表示
@@ -1362,13 +1445,14 @@ BREAK:
 
 	;
 	; ボタン入力待機
-	;-
-	;	jsr GetJoyPad
-	;	WAIT_VBLANK
-	;	lda _pad1+1
-	;	and #pad_start
-	;beq -
+	-
+		jsr GetJoyPad
+		WAIT_VBLANK
+		lda _pad1+1
+		and #pad_A
+	beq -
 
++end
 	ldy _reg_y
 	ldx _reg_x
 	lda _reg_a
@@ -1439,19 +1523,43 @@ DrawRegisters:
 		dex
 	bpl -
 	;
+	; PC レジスタ (カーソル)
+	lda _reg_pc
+	and #3
+	tax
+	lda DATA_XCursor, x
+	sta MEM_SP0+3
+
+	lda _reg_pc
+	LSR_n 2
+	and #15
+	tax
+	lda DATA_YCursor, x
+	sta MEM_SP0+0
+
+	lda #$18 ; →
+	sta MEM_SP0+1
+	;
 	; 描画
 	SET_ARGS NAMETABLE20, MEM_BG0, DATA_Register
 	WAIT_VBLANK
 	WAIT_VBLANK
 	jsr DrawXLines
 	jsr DrawScrollZero
+	WAIT_VBLANK
+	SET_N #$0
+	jsr Draw1Sprite
 	rts
 
 DATA_StatusBitColor:
 	.db $13,$13,$12,$12,$12,$12,$13,$13
-
 ;０１２３４５６７８９０１２３４５６７８
 ;｜Ａ：ＸＸ　PC：ＸＸＸＸ　　　　　　　
 ;｜Ｘ：ＸＸ　　　ＮＶ－Ｂ－ＩＺＣ　　　
 ;｜Ｙ：ＸＸ　Ｐ：●●●●●●●●ＸＸ　
 ;｜Ｓ：ＸＸ　［ＸＸ　ＸＸ　ＸＸ　ＸＸ］
+DATA_XCursor:
+	.db 5*8, 8*8, 11*8, 14*8
+;0000:00 00 00 00
+DATA_YCursor:
+	.db 4*8-1, 5*8-1, 6*8-1, 7*8-1, 8*8-1, 9*8-1, 10*8-1, 11*8-1, 12*8-1, 13*8-1, 14*8-1, 15*8-1, 16*8-1, 17*8-1
