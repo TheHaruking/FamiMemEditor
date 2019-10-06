@@ -1,4 +1,4 @@
-;///////////////////////////////////////////
+;*****************************************************************************;
 ;■ 変数
 ; $0000
 	_y			= $D0
@@ -28,7 +28,7 @@
 	_is_pasted		= $E4
 	_is_selecting	= $E5
 	_select_y_View	= $E6
-	_select_reserve = $E7
+	_reg_pc_last_40 = $E7
 
 	_reg_a	= $E8
 	_reg_x	= $E9
@@ -151,7 +151,7 @@
 ; $0700
 
 ;■ 定数
-	; ボタン (一般のファミコンゲームとは逆になっているが、こちらが好み。)
+; ボタン (一般のファミコンゲームとは逆になっているが、こちらが好み。)
 	pad_A		EQU #$01
 	pad_B		EQU #$02
 	pad_select	EQU #$04
@@ -160,14 +160,14 @@
 	pad_Down	EQU #$20
 	pad_Left	EQU #$40
 	pad_Right	EQU #$80
-
+; 座標計算
 	Y_OFS		EQU $20 ; 上4行空けてカーソルを表示する際のオフセット値
-	X_OFS		EQU $30 ; "0000:" の分を空けてカーソルを表示する際のオフセット値
-	;
-	; メモリアドレス
+	X_OFS		EQU $2F ; "0000:" の分 - 文字との右間隔 を空けてカーソルを表示する際のオフセット値
+
+;■ メモリアドレス
+; $6000 : SRAM
 	SRAM	EQU $6000
-	;
-	; PPU アドレス
+; $2000 : NAMETABLE
 	NAMETABLE00 EQU $2000
 	NAMETABLE01 EQU $2020
 	NAMETABLE02 EQU $2040
@@ -198,7 +198,8 @@
 	NAMETABLE27 EQU $2360
 	NAMETABLE28 EQU $2380
 	NAMETABLE29 EQU $23A0
-;///////////////////////////////////////////
+
+;*****************************************************************************;
 ; macro
 macro SET_ADDR ADDR
 	lda #<(ADDR)
@@ -292,6 +293,12 @@ macro POP_REG X,Y,ADDR,SRCA,N
 		tax
 	endif
 endm
+;
+; 事前に tsx すること
+macro LOAD_STACK N, MMMM
+	lda STACK+N, x
+	sta MMMM
+endm
 
 macro LSR_n N
 	rept N
@@ -320,7 +327,7 @@ macro SET_SPBUF N, y, chr, attr, x
 	lda x		; X座標
 	sta (MEM_SP0+(N*4)+3)
 endm
-;///////////////////////////////////////////
+;*****************************************************************************;
 ;// 関数
 ;
 ; 電源投入後最初に実行
@@ -358,6 +365,10 @@ RESET:
 		inx
 	bne -
 	;
+	; 00, 01 の BRK で停止するようにしておく
+	lda #$FC
+	sta _reg_pc
+	;
 	; VBlank 待機
 	WAIT_VBLANK
 	WAIT_VBLANK
@@ -391,6 +402,7 @@ RESET:
 	;lda #%10000000 ; NMI ? SPsize BGbase SPbase BG縦横 MainScreen(2bit)
 	;sta $2000
 	jsr DrawInitialize
+	SET_ADDR_PTR _base
 	jsr DrawHex16Lines
 ;
 ; メインループ
@@ -426,6 +438,7 @@ MainLoop:
 	+
 	;
 	; メモリビュワー
+		SET_ADDR_PTR _base
 		jsr DrawHex16Lines
 		SET_N #0
 		jsr Draw1Sprite
@@ -483,7 +496,7 @@ DATA_SelectRoutine_func:
 	.dw nonefunc, MoveCursor, ChangeBaseAddr, Exec, OtherFunc
 	.dw EditHex ; 5:十時キー
 ;
-;///////////////////////////////////////////
+;*****************************************************************************;
 
 ; コントローラーの情報を取得
 ;	pad1+0 : 現在の状態
@@ -871,8 +884,15 @@ SelectPaste:
 	inc _is_pasted
 	lda #0
 	sta _is_selecting
+	;
+	; ペースト分カーソルを移動
+	; (CulcCorsor 前なので _curaddr でなく _y に対して処理)
+	lda _copy_buf
+	LSR_n 2
+	clc
+	adc _y
+	sta _y
 	rts
-
 ;
 ; select_y カーソル座標算出
 calc_select_y_view:
@@ -968,7 +988,7 @@ DrawInitialize:
 
 	SET_ARGS $2280, MEM_BG1, DATA_Register
 	WAIT_VBLANK
-	jsr DrawXLines
+	jsr DrawXLines_width_19
 	jsr DrawScrollZero
 
 	SET_ARGS $2340, MEM_BG7, DATA_HELP
@@ -985,44 +1005,50 @@ DrawInitialize:
 	rts
 
 DATA_TITLE:
-	.db 1 ; memcpy32 に渡す値
-	.!hira "010101020203030303　　ふぁみめむ80えでぃた　　030303030202010101"
+	.db 1 ; memcpy32 に渡す値 (行数)
+	.!hira "010101010202020303　　ふぁみめむ80えでぃた　　030302020201010101"
+
+DATA_Register: ; 横幅 19
+	.db 6 ; memcpy に渡す値 (総バイト数)
+	.db $1c,$cc,$98,$99,$9f,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$1d,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+	.db $1a,$41,$3a,$2d,$2d,$00,$ff,$3a,$2d,$2d,$2d,$2d,$00,$00,$00,$00,$00,$00,$1a,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+	.db $1a,$58,$3a,$2d,$2d,$00,$00,$00,$4e,$56,$52,$42,$44,$49,$5a,$43,$00,$00,$1a,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+	.db $1a,$59,$3a,$2d,$2d,$00,$50,$3a,$10,$10,$10,$10,$10,$10,$10,$10,$2d,$2d,$1a,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+	.db $1a,$53,$3a,$2d,$2d,$5b,$2d,$2d,$00,$2d,$2d,$20,$2d,$2d,$20,$2d,$2d,$5d,$1a,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+	.db $1e,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$1f,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
 
 DATA_HELP
 	.db 4
 	;.!hira "Ａ＋じゅうじ：かーそるいどう　　Ｂ＋じゅうじ：あどれすへんこう　"
-	.db $14,$2b,$1a,$1b,$19,$18,$3a,$8b,$2d,$9d,$cb,$84,$a9,$86,$00,$00,$17,$2b,$1a,$1b,$3a,$af,$d3,$84,$97,$a6,$84,$26,$93,$b4,$2d,$00
-	.db $15,$2b,$19,$18,$3a,$ba,$2d,$98,$84,$a9,$86,$00,$00,$00,$00,$00,$17,$2b,$18,$3a,$ba,$2d,$99,$a8,$00,$00,$00,$00,$00,$00,$00,$00
-	.db $7f,$2b,$14,$15,$3a,$ab,$c5,$86,$ca,$c7,$8f,$00,$00,$00,$00,$00,$16,$3a,$98,$a3,$93,$86,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+	.db $d4,$2b,$d8,$d9,$da,$db,$3a,$8b,$2d,$9d,$cb,$84,$a9,$86,$00,$00,$d7,$2b,$da,$db,$3a,$af,$d3,$84,$97,$a6,$84,$26,$93,$b4,$2d,$00
+	.db $d5,$2b,$d8,$d9,$00,$00,$3a,$ba,$2d,$98,$84,$a9,$86,$00,$00,$00,$d7,$2b,$d9,$00,$3a,$ba,$2d,$99,$a8,$00,$00,$00,$00,$00,$00,$00
+	.db $7f,$2b,$d4,$d5,$00,$00,$3a,$ab,$c5,$86,$ca,$c7,$8f,$00,$00,$00,$d6,$00,$00,$00,$3a,$98,$a3,$93,$86,$00,$00,$00,$00,$00,$00,$00
 	.db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
 
-DATA_Register:
-	.db 6
-	.db $dc,$d9,$d9,$d9,$d9,$d9,$d9,$d9,$d9,$d9,$d9,$d9,$d9,$d9,$d9,$d9,$d9,$d9,$d9,$dd,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
-	.db $da,$41,$3a,$2d,$2d,$00,$e0,$3a,$2d,$2d,$2d,$2d,$00,$00,$00,$00,$00,$00,$00,$da,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
-	.db $da,$58,$3a,$2d,$2d,$00,$00,$00,$4e,$56,$2d,$42,$2d,$49,$5a,$43,$00,$00,$00,$da,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
-	.db $da,$59,$3a,$2d,$2d,$00,$50,$3a,$10,$10,$10,$10,$10,$10,$10,$10,$2d,$2d,$00,$da,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
-	.db $da,$53,$3a,$2d,$2d,$3a,$5b,$2d,$2d,$00,$2d,$2d,$20,$2d,$2d,$20,$2d,$2d,$5d,$da,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
-	.db $de,$d9,$d9,$d9,$d9,$d9,$d9,$d9,$d9,$d9,$d9,$d9,$d9,$d9,$d9,$d9,$d9,$d9,$d9,$df,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
-
+; _ADDR_ : 表示アドレス
 DrawHex16Lines:
+	PUSH_REG 0,0,1,0,0
 	;
 	; BG バッファを初期化
 	SET_ARGS MEM_BG0, #0, #0 ; 256バイト扱い
 	jsr memset
-
+	;
 	; #$2080, _base
 	SET_ADDR $2080
-	SET_SRCA_PTR _base
+	; SET_SRCA_PTR _base
+	tsx
+	LOAD_STACK 2, _SRCA_
+	LOAD_STACK 1, _SRCA_+1
 	jsr DrawHex8Lines
-
+	;
 	; 次のアドレス
 	inc _ADDR_+1 ; #$2180
 	SET_N #$20
 	jsr add_16_SRCA
-
+	;
 	; #$2180, _base+$20
 	jsr DrawHex8Lines
+	POP_REG 0,0,1,0,0
 	rts
 
 ; _ADDR_ : Nametable
@@ -1050,10 +1076,10 @@ DrawHex8Lines:
 	rts
 
 DrawSelectingCursor:
-	SET_SPBUF 1, _y_View, #$18, #0, #5*8
-	SET_SPBUF 2, _y_View, #$19, #0, #17*8
-	SET_SPBUF 3, _select_y_View, #$18, #0, #5*8
-	SET_SPBUF 4, _select_y_View, #$19, #0, #17*8
+	SET_SPBUF 1, _y_View, #$D9, #0, #5*8 ; →
+	SET_SPBUF 2, _y_View, #$D8, #0, #17*8 ; ←
+	SET_SPBUF 3, _select_y_View, #$D9, #0, #5*8 ; →
+	SET_SPBUF 4, _select_y_View, #$D8, #0, #17*8 ; ←
 
 	WAIT_VBLANK
 	jsr DrawAllSprites 
@@ -1069,7 +1095,7 @@ CleanSelectingCursor:
 	rts
 
 
-;///////////////////////////////////////////
+;*****************************************************************************;
 ; 汎用関数
 ; _ADDR_ : 対象アドレス
 ; _SRCR_ : 値 (アドレスではない)
@@ -1260,7 +1286,7 @@ bin2hex:
 
 DATA_BIN2HEX:	.db "0123456789ABCDEF"
 
-;///////////////////////////////////////////
+;*****************************************************************************;
 ; _ADDR_ : NAMETABLE
 Draw8Lines:
 if 0	
@@ -1333,6 +1359,80 @@ DrawXLines:
 	POP_REG 1,1,0,0,0
 	rts
 
+; _ADDR_ : NameTable
+; _SRCA_ : MEM_BG
+; _N_    : 行数 (最大:約?行)
+DrawXLines_width_13:
+	PUSH_REG 1,1,1,1,1
+
+	lda _ADDR_+1
+	sta #$2006
+	lda _ADDR_
+	sta #$2006
+	ldx _N_
+	SET_N #32
+	ldy #0 ; MEM_BG の インデックス
+	-
+		dex
+		bpl +
+			jmp ++
+		+
+	    REPT 13
+			lda (_SRCA_), y
+			sta #$2007
+			iny
+	    ENDR
+
+		ldy #0
+		jsr add_16_SRCA
+		jsr add_16_ADDR
+		lda _ADDR_+1
+		sta #$2006
+		lda _ADDR_
+		sta #$2006
+	jmp -
+	++
+
+	POP_REG 1,1,1,1,1
+	rts
+
+; _ADDR_ : NameTable
+; _SRCA_ : MEM_BG
+; _N_    : 行数 (最大:約?行)
+DrawXLines_width_19:
+	PUSH_REG 1,1,1,1,1
+
+	lda _ADDR_+1
+	sta #$2006
+	lda _ADDR_
+	sta #$2006
+	ldx _N_
+	SET_N #32
+	ldy #0 ; MEM_BG の インデックス
+	-
+		dex
+		bpl +
+			jmp ++
+		+
+	    REPT 19
+			lda (_SRCA_), y
+			sta #$2007
+			iny
+	    ENDR
+
+		ldy #0
+		jsr add_16_SRCA
+		jsr add_16_ADDR
+		lda _ADDR_+1
+		sta #$2006
+		lda _ADDR_
+		sta #$2006
+	jmp -
+	++
+
+	POP_REG 1,1,1,1,1
+	rts
+
 ; _N_ : spr id
 Draw1Sprite:
 	PUSH_REG 0,1,0,0,0
@@ -1359,7 +1459,7 @@ DrawAllSprites:
 	sta $4014
 	rts
 
-;///////////////////////////////////////////
+;*****************************************************************************;
 ; https://www.wizforest.com/tech/Z80vs6502/;p1#LoopAdd
 One2Handlet:
 	lda #0
@@ -1384,7 +1484,7 @@ One2Handlet:
 	stx $01		; 3
 	rts
 
-;///////////////////////////////////////////
+;*****************************************************************************;
 NMI:
 	pha
 	PUSH_REG 1,1,0,0,0
@@ -1396,7 +1496,7 @@ NMI:
 	pla
 	rti
 
-;///////////////////////////////////////////
+;*****************************************************************************;
 BREAK:
 	;
 	; 保存
@@ -1424,10 +1524,10 @@ BREAK:
 	; 前回の PC を保存してから スタックから PC を読み込み
 	lda _reg_pc
 	sta _reg_pc_last
-	lda STACK+2, x
-	sta _reg_pc
-	lda STACK+3, x
-	sta _reg_pc+1
+	and #%11000000
+	sta _reg_pc_last_40
+	LOAD_STACK 2, _reg_pc
+	LOAD_STACK 3, _reg_pc+1
 	dec _reg_pc
 	;
 	; 連続した BRK (PC が前回の+1) だった場合、Return (上位PCは見ない)
@@ -1438,19 +1538,30 @@ BREAK:
 	bne +
 		jmp +end
 	+
-
 	;
 	; レジスタ情報表示
 	jsr DrawRegisters
-
 	;
 	; ボタン入力待機
 	-
 		jsr GetJoyPad
 		WAIT_VBLANK
+		;
+		; A : ステップ実行(そのままループを抜ける)
 		lda _pad1+1
 		and #pad_A
-	beq -
+		beq +
+			jmp ++
+		+
+		;
+		; SELECT : デバッグ中止(STACK を SELECT 押下時点の値まで戻して rts)
+		lda _pad1+1
+		and #pad_select
+		beq +
+			jmp EndDebug
+		+
+	jmp -
+	++
 
 +end
 	ldy _reg_y
@@ -1458,7 +1569,7 @@ BREAK:
 	lda _reg_a
 	rti
 
-;///////////////////////////////////////////
+;*****************************************************************************;
 DrawRegisters:
 	;
 	; 枠組み描画
@@ -1488,7 +1599,7 @@ DrawRegisters:
 	ldx _reg_s
 	i=0
 	rept 4
-		SET_ADDR MEM_BG4 + 7+(i*3)
+		SET_ADDR MEM_BG4 + 6+(i*3)
 		lda STACK+i, x
 		sta _N_
 		jsr bin2hex
@@ -1537,18 +1648,29 @@ DrawRegisters:
 	lda DATA_YCursor, x
 	sta MEM_SP0+0
 
-	lda #$18 ; →
+	lda #$D9 ; →
 	sta MEM_SP0+1
 	;
 	; 描画
 	SET_ARGS NAMETABLE20, MEM_BG0, DATA_Register
 	WAIT_VBLANK
 	WAIT_VBLANK
-	jsr DrawXLines
+	jsr DrawXLines_width_19
 	jsr DrawScrollZero
 	WAIT_VBLANK
 	SET_N #$0
 	jsr Draw1Sprite
+	;
+	; メモリページ描画 (前回からページが変わっている場合)
+	lda _reg_pc
+	and #%11000000 ; $40 単位でページ変化を確認
+	cmp _reg_pc_last_40
+	beq +
+		sta _ADDR_
+		lda _reg_pc1
+		sta _ADDR_+1
+		jsr DrawHex16Lines
+	+
 	rts
 
 DATA_StatusBitColor:
@@ -1558,8 +1680,15 @@ DATA_StatusBitColor:
 ;｜Ｘ：ＸＸ　　　ＮＶ－Ｂ－ＩＺＣ　　　
 ;｜Ｙ：ＸＸ　Ｐ：●●●●●●●●ＸＸ　
 ;｜Ｓ：ＸＸ　［ＸＸ　ＸＸ　ＸＸ　ＸＸ］
-DATA_XCursor:
-	.db 5*8, 8*8, 11*8, 14*8
-;0000:00 00 00 00
-DATA_YCursor:
-	.db 4*8-1, 5*8-1, 6*8-1, 7*8-1, 8*8-1, 9*8-1, 10*8-1, 11*8-1, 12*8-1, 13*8-1, 14*8-1, 15*8-1, 16*8-1, 17*8-1
+
+DATA_XCursor: ; PC レジスタ矢印のオフセット(X)
+	.db 40, 64, 88, 112
+DATA_YCursor: ; PC レジスタ矢印のオフセット(Y)
+	.db 31, 39, 47, 55, 63, 71, 79, 87, 95, 103, 111, 119, 127, 135, 143, 151
+
+EndDebug:
+	;
+	; SelectRoutine まで戻る
+	ldx #$FD
+	txs
+	rts
