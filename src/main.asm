@@ -52,7 +52,7 @@
 	; ルーチンで使用
 	_N_		= $F8 ; 8 bit の値を渡すのに使用
 	_N1_	= $F9
-	_MM_	= $FA ; 汎用
+	_MM_	= $FA ; 汎用 (Switch ルーチンのジャンプアドレス)
 	_MM1_	= $FB
 	_ADDR_	= $FC ; 16 bit のアドレスを渡すのに使用
 	_ADDR1_ = $FD
@@ -145,10 +145,10 @@
 	MEM_BG14	EQU $04C0
 	MEM_BG15	EQU $04E0
 
-; $0500
-	_copy_buf	= $500 ; $500-$53F
+; $0500 :
 ; $0600
 ; $0700
+	_copy_buf	= $700 ; $700-$73F
 
 ;■ 定数
 ; ボタン (一般のファミコンゲームとは逆になっているが、こちらが好み。)
@@ -264,11 +264,19 @@ macro PUSH_REG X,Y,ADDR,SRCA,N
 	if N=1
 		lda _N_
 		pha
+		lda _MM_
+		pha
+		lda _MM_+1
+		pha
 	endif
 endm
 
 macro POP_REG X,Y,ADDR,SRCA,N
 	if N=1
+		pla
+		sta _MM_+1
+		pla
+		sta _MM_
 		pla
 		sta _N_
 	endif
@@ -402,7 +410,7 @@ RESET:
 	;lda #%10000000 ; NMI ? SPsize BGbase SPbase BG縦横 MainScreen(2bit)
 	;sta $2000
 	jsr DrawInitialize
-	SET_ADDR_PTR _base
+	SET_SRCA_PTR _base
 	jsr DrawHex16Lines
 ;
 ; メインループ
@@ -438,7 +446,7 @@ MainLoop:
 	+
 	;
 	; メモリビュワー
-		SET_ADDR_PTR _base
+		SET_SRCA_PTR _base
 		jsr DrawHex16Lines
 		SET_N #0
 		jsr Draw1Sprite
@@ -476,25 +484,23 @@ SelectRoutine:
 	;
 	; padMode に応じて分岐
 	lda _padMode
-	asl ; dw 配列を読むので 2 倍しておく
+	ASL_n 1 ; dw 配列を読むので 2 倍しておく
 	tax
 	lda DATA_SelectRoutine_func, x
-	sta _ADDR_
+	sta _MM_
 	lda DATA_SelectRoutine_func+1, x
-	sta _ADDR_+1
-	jmp (_ADDR_)
-	rts
-
-; A:1, B:2, start:3, select:4, 十字キー:5
-DATA_SelectRoutine
-	.db 0, 1, 2, 0	; - A B -
-	.db 3, 0, 0, 0	; e - - -     
-	.db 4, 0, 0, 0	; S - - -   
-	.db 0, 0, 0, 0	; - - - -  
-	
+	sta _MM_+1
+	jmp (_MM_)
 DATA_SelectRoutine_func:
 	.dw nonefunc, MoveCursor, ChangeBaseAddr, Exec, OtherFunc
 	.dw EditHex ; 5:十時キー
+
+; A:1, B:2, start:3, select:4, 十字キー:5
+DATA_SelectRoutine
+	.db 0, 1, 2, 0	; - A B - 
+	.db 3, 0, 0, 0	; e - - - 
+	.db 4, 0, 0, 0	; S - - - 
+	.db 0, 0, 0, 0	; - - - - 
 ;
 ;*****************************************************************************;
 
@@ -675,7 +681,7 @@ CalcCursor:
 	dec _y_View	; スプライトは下に 1pxcel ずれる。さらに調整
 
 	lda _x
-	asl
+	ASL_n 1
 	clc
 	adc _x
 	adc _is_Hex_Changing
@@ -778,7 +784,7 @@ Exec: ; 実行
 		rts
 	+
 ;
-; A,X,Y のクリア
+; A,X,Y をクリアしてから実行
 	lda #0
 	tax
 	tay
@@ -824,14 +830,15 @@ OtherFunc:
 	bpl +
 		rts
 	+
-	asl
+	ASL_n 1
 	tax
 	lda DATA_OtherFuncTable, x
-	sta _ADDR_
+	sta _MM_
 	lda DATA_OtherFuncTable+1, x
-	sta _ADDR_+1
-	jmp (_ADDR_)
-
+	sta _MM_+1
+	jmp (_MM_)
+DATA_OtherFuncTable:
+	.dw SelectRangeU, nonefunc, SelectPaste, nonefunc, SelectRangeD, nonefunc, nonefunc, nonefunc
 ;
 ; 範囲選択開始
 StartSelectRange:
@@ -957,9 +964,6 @@ calc_SelectRenge:
 	sta _selectedAddr+1
 	rts
 
-DATA_OtherFuncTable:
-	.dw SelectRangeU, nonefunc, SelectPaste, nonefunc, SelectRangeD, nonefunc, nonefunc, nonefunc
-
 nonefunc:
 	rts
 ;
@@ -1025,30 +1029,41 @@ DATA_HELP
 	.db $7f,$2b,$d4,$d5,$00,$00,$3a,$ab,$c5,$86,$ca,$c7,$8f,$00,$00,$00,$d6,$00,$00,$00,$3a,$98,$a3,$93,$86,$00,$00,$00,$00,$00,$00,$00
 	.db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
 
-; _ADDR_ : 表示アドレス
+; _SRCA_ : 表示アドレス (通常:_base, デバッガ:PCの_base)
 DrawHex16Lines:
-	PUSH_REG 0,0,1,0,0
+	PUSH_REG 0,0,0,1,0
 	;
 	; BG バッファを初期化
 	SET_ARGS MEM_BG0, #0, #0 ; 256バイト扱い
 	jsr memset
 	;
-	; #$2080, _base
+	; ADDR : NameTable
 	SET_ADDR $2080
-	; SET_SRCA_PTR _base
+	;
+	; SRCA : _base
 	tsx
 	LOAD_STACK 2, _SRCA_
 	LOAD_STACK 1, _SRCA_+1
 	jsr DrawHex8Lines
 	;
+	; BG バッファを初期化
+	SET_ARGS MEM_BG0, #0, #0 ; 256バイト扱い
+	jsr memset
+	;
+	; ADDR : NameTable
+	SET_ADDR $2180
+	;
+	; SRCA : _base
+	tsx
+	LOAD_STACK 2, _SRCA_
+	LOAD_STACK 1, _SRCA_+1
+	;
 	; 次のアドレス
-	inc _ADDR_+1 ; #$2180
 	SET_N #$20
 	jsr add_16_SRCA
-	;
-	; #$2180, _base+$20
 	jsr DrawHex8Lines
-	POP_REG 0,0,1,0,0
+
+	POP_REG 0,0,0,1,0
 	rts
 
 ; _ADDR_ : Nametable
@@ -1056,14 +1071,18 @@ DrawHex16Lines:
 ; _MM_ : 破壊
 DrawHex8Lines:
 	PUSH_REG 0,0,1,1,0
-
+	;
 	; 退避
 	SET_MMPTR _ADDR_
-	
+	;
 	; 準備
 	SET_ADDR MEM_BG0
 ;	SET_SRCA_PTR _base ; 引数で入力済み
 	jsr BufDraw_addr_hex_32x8
+	;
+	; 右側準備
+	SET_ADDR MEM_BG0+19
+	jsr BufDraw_Asm_13x8
 
 	; 描画
 	SET_ADDR_PTR _MM_ ; ★ #$2080 [2回目:#$2180]
@@ -1286,8 +1305,432 @@ bin2hex:
 
 DATA_BIN2HEX:	.db "0123456789ABCDEF"
 
+; _ADDR_ : 対象バッファ
+; _SRCA_ : disasm 対象先頭メモリアドレス
+BufDraw_Asm_13x8
+	PUSH_REG 1,1,1,1,0
+
+	ldx #1
+	ldy #0
+	-
+;		jsr BufDraw_DisAsm ;(+11)
+;		SET_N #21
+;		jsr add_16_ADDR
+
+		lda (_SRCA_),y
+		sta _N_
+		jsr bin2asm
+
+		SET_N #5
+		jsr add_16_ADDR
+
+		jsr bin2adressing
+; 		SET_N #4
+;		jsr add_16_ADDR
+
+;		iny
+		dex
+	bne -
+
+	POP_REG 1,1,1,1,0
+	rts
+
+; 説明 : _N_ の値を ASM文字 4バイトに変換し、指定アドレスに書き込む。
+; _ADDR_ : 指定アドレス
+; _N_  : 値 
+bin2asm:
+	PUSH_REG 1,1,0,0,0
+
+	lda _N_
+	tay
+	lda DATA_BIN2ASMID, y
+	ASL_n 2
+	tax
+	ldy #0
+	rept 4
+		lda DATA_ASMSTR, x
+		sta (_ADDR_), y
+		iny
+		inx
+	endr
+
+	POP_REG 1,1,0,0,0
+	rts
+
+; 説明 : _SRCA_ の指す値を元に、その ASM に対応する Adressing 文字列 6バイトに変換し、指定アドレスに書き込む。
+; _ADDR_ : 文字列を書き込むアドレス
+; _SRCA_ : ソースアドレス
+bin2adressing:
+	PUSH_REG 1,1,0,0,1
+	;
+	; ASM を読む
+	ldy #0
+	lda (_SRCA_), y
+	;
+	; アドレッシングに応じてジャンプ
+	tax
+	lda DATA_DISASMADRESSING, x
+	ASL_n 1
+	tax
+	lda DATA_bin2adressing ,x
+	sta _MM_
+	lda DATA_bin2adressing+1, x
+	sta _MM_+1
+	jmp (_MM_)
+DATA_bin2adressing:
+	.dw bin2adressing_n, bin2adressing_imm, bin2adressing_zp, bin2adressing_addr
+	.dw bin2adressing_zpX, bin2adressing_zpY, bin2adressing_addrX, bin2adressing_addrY
+	.dw bin2adressing_indX, bin2adressing_indY, bin2adressing_ind, bin2adressing_unknown
+; 00:      04:00,x    08:(00,x)
+; 01:#00   05:00,y    09:(00),y
+; 02:00    06:0000,x  10:(0000)
+; 03:0000  07:0000,y
+bin2adressing_n:
+	jmp bin2adressing_END
+bin2adressing_imm:
+	ldy #0
+	lda #'#'
+	sta (_ADDR_), y
+
+	ldy #1
+	lda #'$'
+	sta (_ADDR_), y
+
+	SET_N #2
+	jsr add_16_ADDR
+
+	ldy #1
+	lda (_SRCA_), y
+	sta _N_
+	jsr bin2hex
+
+	jmp bin2adressing_END
+bin2adressing_zp:
+	ldy #0
+	lda #'$'
+	sta (_ADDR_), y
+	
+	SET_N #1
+	jsr add_16_ADDR
+
+	ldy #1
+	lda (_SRCA_), y
+	sta _N_
+	jsr bin2hex
+
+	jmp bin2adressing_END
+bin2adressing_addr:
+	ldy #0
+	lda #'$'
+	sta (_ADDR_), y
+
+	SET_N #1
+	jsr add_16_ADDR
+
+	ldy #2
+	lda (_SRCA_), y
+	sta _N_
+	jsr bin2hex
+
+	SET_N #2
+	jsr add_16_ADDR
+
+	ldy #1
+	lda (_SRCA_), y
+	sta _N_
+	jsr bin2hex
+	jmp bin2adressing_END
+bin2adressing_zpX:
+	ldy #0
+	lda #'$'
+	sta (_ADDR_), y
+
+	ldy #3
+	lda #$2C ; ,
+	sta (_ADDR_), y
+
+	ldy #4
+	lda #'X'
+	sta (_ADDR_), y
+
+	SET_N #1
+	jsr add_16_ADDR
+
+	ldy #1
+	lda (_SRCA_), y
+	sta _N_
+	jsr bin2hex
+	jmp bin2adressing_END
+bin2adressing_zpY:
+	ldy #0
+	lda #'$'
+	sta (_ADDR_), y
+
+	ldy #3
+	lda #$2C ; ,
+	sta (_ADDR_), y
+
+	ldy #4
+	lda #'Y'
+	sta (_ADDR_), y
+
+	SET_N #1
+	jsr add_16_ADDR
+
+	ldy #1
+	lda (_SRCA_), y
+	sta _N_
+	jsr bin2hex
+	jmp bin2adressing_END
+bin2adressing_addrX:
+	ldy #0
+	lda #'$'
+	sta (_ADDR_), y
+
+	ldy #5
+	lda #$2C ; ,
+	sta (_ADDR_), y
+
+	ldy #6
+	lda #'X'
+	sta (_ADDR_), y
+
+	SET_N #1
+	jsr add_16_ADDR
+
+	ldy #2
+	lda (_SRCA_), y
+	sta _N_
+	jsr bin2hex
+
+	SET_N #2
+	jsr add_16_ADDR
+
+	ldy #1
+	lda (_SRCA_), y
+	sta _N_
+	jsr bin2hex
+	jmp bin2adressing_END
+bin2adressing_addrY:
+	ldy #0
+	lda #'$'
+	sta (_ADDR_), y
+
+	ldy #5
+	lda #$2C ; ,
+	sta (_ADDR_), y
+
+	ldy #6
+	lda #'Y'
+	sta (_ADDR_), y
+
+	SET_N #1
+	jsr add_16_ADDR
+
+	ldy #2
+	lda (_SRCA_), y
+	sta _N_
+	jsr bin2hex
+
+	SET_N #2
+	jsr add_16_ADDR
+
+	ldy #1
+	lda (_SRCA_), y
+	sta _N_
+	jsr bin2hex
+	jmp bin2adressing_END
+bin2adressing_indX:
+	ldy #0
+	lda #$28 ; (
+	sta (_ADDR_), y
+
+	ldy #1
+	lda #'$'
+	sta (_ADDR_), y
+
+	ldy #4
+	lda #$2C ; ,
+	sta (_ADDR_), y
+
+	ldy #5
+	lda #'X'
+	sta (_ADDR_), y
+
+	ldy #6
+	lda #$29 ; )
+	sta (_ADDR_), y
+
+	SET_N #2
+	jsr add_16_ADDR
+
+	ldy #1
+	lda (_SRCA_), y
+	sta _N_
+	jsr bin2hex
+
+	jmp bin2adressing_END
+bin2adressing_indY:
+	ldy #0
+	lda #$28 ; (
+	sta (_ADDR_), y
+	
+	ldy #1
+	lda #'$'
+	sta (_ADDR_), y
+
+	ldy #4
+	lda #$29 ; )
+	sta (_ADDR_), y
+
+	ldy #5
+	lda #$2C ; ,
+	sta (_ADDR_), y
+
+	ldy #6
+	lda #'Y'
+	sta (_ADDR_), y
+
+	SET_N #2
+	jsr add_16_ADDR
+
+	ldy #1
+	lda (_SRCA_), y
+	sta _N_
+	jsr bin2hex
+	jmp bin2adressing_END
+bin2adressing_ind:
+	ldy #0
+	lda #$28 ; (
+	sta (_ADDR_), y
+
+	ldy #1
+	lda #'$'
+	sta (_ADDR_), y
+
+	ldy #6
+	lda #$29 ; )
+	sta (_ADDR_), y
+
+	SET_N #2
+	jsr add_16_ADDR
+
+	ldy #2
+	lda (_SRCA_), y
+	sta _N_
+	jsr bin2hex
+
+	SET_N #2
+	jsr add_16_ADDR
+
+	ldy #1
+	lda (_SRCA_), y
+	sta _N_
+	jsr bin2hex
+
+	jmp bin2adressing_END
+bin2adressing_unknown:
+	jmp bin2adressing_n
+bin2adressing_END:
+	POP_REG 1,1,0,0,1
+	rts
+
+DATA_BIN2ASMID:
+	;	 0   1   2   3    4   5   6   7    8   9   A   B    C   D   E   F
+	.db $26,$11,$38,$38, $38,$11,$15,$38, $0D,$11,$15,$38, $38,$11,$15,$38
+	.db $2A,$11,$38,$38, $38,$11,$15,$38, $34,$11,$38,$38, $38,$11,$15,$38
+	.db $24,$10,$38,$38, $22,$10,$17,$38, $0F,$10,$17,$38, $22,$10,$17,$38
+	.db $2B,$10,$38,$38, $38,$10,$17,$38, $35,$10,$38,$38, $38,$10,$17,$38
+
+	.db $27,$12,$38,$38, $38,$12,$16,$38, $0C,$12,$16,$38, $23,$12,$16,$38
+	.db $2E,$12,$38,$38, $38,$12,$16,$38, $30,$12,$38,$38, $38,$12,$16,$38
+	.db $25,$13,$38,$38, $38,$13,$18,$38, $0E,$13,$18,$38, $23,$13,$18,$38
+	.db $2F,$13,$38,$38, $38,$13,$18,$38, $31,$13,$38,$38, $38,$13,$18,$38
+
+	.db $38,$03,$38,$38, $05,$03,$04,$38, $1E,$38,$06,$38, $05,$03,$04,$38
+	.db $2C,$03,$38,$38, $05,$03,$04,$38, $07,$03,$08,$38, $38,$03,$38,$38
+	.db $02,$00,$01,$38, $02,$00,$01,$38, $0A,$00,$09,$38, $02,$00,$01,$38
+	.db $2D,$00,$38,$38, $02,$00,$01,$38, $36,$00,$0B,$38, $02,$00,$01,$38
+
+	.db $21,$1F,$38,$38, $21,$1F,$1C,$38, $1B,$1F,$1D,$38, $21,$1F,$1C,$38
+	.db $28,$1F,$38,$38, $38,$1F,$1C,$38, $32,$1F,$38,$38, $38,$1F,$1C,$38
+	.db $20,$14,$38,$38, $20,$14,$1A,$38, $1A,$14,$37,$38, $20,$14,$1A,$38
+	.db $29,$14,$38,$38, $38,$14,$1A,$38, $33,$14,$38,$38, $38,$14,$1A,$38
+
+DATA_ASMSTR:
+	;     0   1   2   3   4   5   6   7   8   9   A   B   C   D   E   F 
+	; 00:LDA,LDX,LDY,STA,STX,STY,TXA,TYA,TXS,TAX,TAY,TSX,PHA,PHP,PLA,PLP
+	; 10:AND,ORA,EOR,ADC,SBC,ASL,LSR,ROL,ROR,INC,INX,INY,DEC,DEX,DEY,CMP
+	; 20:CPX,CPY,BIT,JMP,JSR,RTS,BRK,RTI,BNE,BEQ,BPL,BMI,BCC,BCS,BVC,BVS
+	; 30:CLI,SEI,CLD,SED,CLC,SEC,CLV,NOP,???
+	.db $e0,$4c,$44,$41,$e0,$4c,$44,$58,$e0,$4c,$44,$59,$e1,$53,$54,$41,$e1,$53,$54,$58,$e1,$53,$54,$59,$e2,$54,$58,$41,$e2,$54,$59,$41
+	.db $e2,$54,$58,$53,$e2,$54,$41,$58,$e2,$54,$41,$59,$e2,$54,$53,$58,$e3,$50,$48,$41,$e3,$50,$48,$50,$e4,$50,$4c,$41,$e4,$50,$4c,$50
+	.db $26,$41,$4e,$44,$7c,$4f,$52,$41,$5e,$45,$4f,$52,$2b,$41,$44,$43,$2d,$53,$42,$43,$e5,$41,$53,$4c,$e6,$4c,$53,$52,$e7,$52,$4f,$4c
+	.db $e8,$52,$4f,$52,$e9,$49,$4e,$43,$e9,$49,$4e,$58,$e9,$49,$4e,$59,$ea,$44,$45,$43,$ea,$44,$45,$58,$ea,$44,$45,$59,$ec,$43,$4d,$50
+	.db $ec,$43,$50,$58,$ec,$43,$50,$59,$eb,$42,$49,$54,$ed,$4a,$4d,$50,$ee,$4a,$53,$52,$ef,$52,$54,$53,$11,$42,$52,$4b,$1b,$52,$54,$49
+	.db $f0,$42,$4e,$45,$3d,$42,$45,$51,$f1,$42,$50,$4c,$3c,$42,$4d,$49,$f3,$42,$43,$43,$f2,$42,$43,$53,$f5,$42,$56,$43,$f4,$42,$56,$53
+	.db $f7,$43,$4c,$49,$f6,$53,$45,$49,$f9,$43,$4c,$44,$f8,$53,$45,$44,$fb,$43,$4c,$43,$fa,$53,$45,$43,$fc,$43,$4c,$56,$00,$4e,$4f,$50
+	.db $3f,$3f,$3f,$3f,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+
+DATA_DISASMADRESSING:
+	; 00:      04:00,x    08:(00,x)
+	; 01:#00   05:00,y    09:(00),y
+	; 02:00    06:0000,x  10:(0000)
+	; 03:0000  07:0000,y  11:[unknown]
+	.db $00,$08,$0B,$0B, $0B,$02,$02,$0B, $00,$01,$00,$0B, $0B,$03,$03,$0B
+	.db $01,$09,$0B,$0B, $0B,$04,$04,$0B, $00,$07,$0B,$0B, $0B,$06,$06,$0B
+	.db $03,$08,$0B,$0B, $02,$02,$02,$0B, $00,$01,$00,$0B, $03,$03,$03,$0B
+	.db $01,$09,$0B,$0B, $0B,$04,$04,$0B, $00,$07,$0B,$0B, $0B,$06,$06,$0B
+
+	.db $00,$08,$0B,$0B, $0B,$02,$02,$0B, $00,$01,$00,$0B, $03,$03,$03,$0B
+	.db $01,$09,$0B,$0B, $0B,$04,$04,$0B, $00,$07,$0B,$0B, $0B,$06,$06,$0B
+	.db $00,$08,$0B,$0B, $0B,$02,$02,$0B, $00,$01,$00,$0B, $0A,$03,$03,$0B
+	.db $01,$09,$0B,$0B, $0B,$04,$04,$0B, $00,$07,$0B,$0B, $0B,$06,$06,$0B
+
+	.db $0B,$08,$0B,$0B, $02,$02,$02,$0B, $00,$0B,$00,$0B, $03,$03,$03,$0B
+	.db $01,$09,$0B,$0B, $04,$04,$05,$0B, $00,$07,$00,$0B, $0B,$06,$0B,$0B
+	.db $01,$08,$01,$0B, $02,$02,$02,$0B, $00,$01,$00,$0B, $03,$03,$03,$0B
+	.db $01,$09,$0B,$0B, $04,$04,$05,$0B, $00,$07,$00,$0B, $06,$06,$07,$0B
+
+	.db $01,$08,$0B,$0B, $02,$02,$02,$0B, $00,$01,$00,$0B, $03,$03,$03,$0B
+	.db $01,$09,$0B,$0B, $0B,$04,$04,$0B, $00,$07,$0B,$0B, $0B,$06,$06,$0B
+	.db $01,$08,$0B,$0B, $02,$02,$02,$0B, $00,$01,$00,$0B, $03,$03,$03,$0B
+	.db $01,$09,$0B,$0B, $0B,$04,$04,$0B, $00,$07,$0B,$0B, $0B,$06,$06,$0B
+
+; Thanks! http://sasq.comyr.com/Stuff/Elektronika/6502_Opcodes_Table.png
+
+DATA_ASM2ADRESSING:
+	; 0:      
+	; 1:#00   
+	; 2:00; 0000
+	; 3:00,x  
+	; 4:00,y
+	; 5:0000,x  
+	; 6:0000,y
+	; 7:(00,x); (00),y
+	; ※ JMP:%10000000 と JSR:%00000000 はプログラム中で特別に扱う
+	.db %11101110, %01010110, %00101110, %11101100 ; LDA,LDX,LDY,STA
+	.db %00010100, %00001100, %00000001, %00000001 ; STX,STY,TXA,TYA
+	.db %00000001, %00000001, %00000001, %00000001 ; TXS,TAX,TAY,TSX
+	.db %00000001, %00000001, %00000001, %00000001 ; PHA,PHP,PLA,PLP
+
+	.db %11101110, %11101110, %11101110, %11101110 ; AND,ORA,EOR,ADC
+	.db %11101110, %00011101, %00011101, %00011101 ; SBC,ASL,LSR,ROL
+	.db %00011101, %00011100, %00000001, %00000001 ; ROR,INC,INX,INY
+	.db %00011100, %00000001, %00000001, %11101110 ; DEC,DEX,DEY,CMP
+
+	.db %00000110, %00000110, %00000100, %10000000 ; CPX,CPY,BIT,JMP
+	.db %00000000, %00000001, %00000000, %00000001 ; JSR,RTS,BRK,RTI
+	.db %00000001, %00000001, %00000001, %00000001 ; BNE,BEQ,BPL,BMI
+	.db %00000001, %00000001, %00000001, %00000001 ; BCC,BCS,BVC,BVS
+
+	.db %00000001, %00000001, %00000001, %00000001 ; CLI,SEI,CLD,SED
+	.db %00000001, %00000001, %00000001, %00000001 ; CLC,SEC,CLV,NOP
+	.db %00000001                                  ; ???
+
 ;*****************************************************************************;
 ; _ADDR_ : NAMETABLE
+; 備考 : MEM_BG0 から 256 バイト書き込む
 Draw8Lines:
 if 0	
 	; バランス ver
@@ -1666,9 +2109,9 @@ DrawRegisters:
 	and #%11000000 ; $40 単位でページ変化を確認
 	cmp _reg_pc_last_40
 	beq +
-		sta _ADDR_
+		sta _SRCA_
 		lda _reg_pc1
-		sta _ADDR_+1
+		sta _SRCA_+1
 		jsr DrawHex16Lines
 	+
 	rts
