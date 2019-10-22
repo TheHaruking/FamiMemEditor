@@ -411,7 +411,9 @@ RESET:
 	;sta $2000
 	jsr DrawInitialize
 	SET_SRCA_PTR _base
-	jsr DrawHex16Lines
+;	jsr DrawHex16Lines
+	jsr BufDraw_MemoryViewer
+	jsr Draw_MemoryViewer
 ;
 ; メインループ
 MainLoop:
@@ -446,10 +448,13 @@ MainLoop:
 	+
 	;
 	; メモリビュワー
+;		SET_SRCA_PTR _base
+;		jsr DrawHex16Lines
+;		SET_N #0
+;		jsr Draw1Sprite
 		SET_SRCA_PTR _base
-		jsr DrawHex16Lines
-		SET_N #0
-		jsr Draw1Sprite
+		jsr BufDraw_MemoryViewer
+		jsr Draw_MemoryViewer
 	++
 	jmp MainLoop
 
@@ -838,6 +843,8 @@ OtherFunc:
 	sta _MM_+1
 	jmp (_MM_)
 DATA_OtherFuncTable:
+	;
+	; ↑ ↗ → ↘ ↓ ↙ ← ↖
 	.dw SelectRangeU, nonefunc, SelectPaste, nonefunc, SelectRangeD, nonefunc, nonefunc, nonefunc
 ;
 ; 範囲選択開始
@@ -880,7 +887,6 @@ SelectRangeD:
 	and #$0F
 	jsr calc_select_y_view
 	rts
-
 ;
 ; ペースト
 SelectPaste:
@@ -976,28 +982,28 @@ DrawInitialize:
 	;
 	; 事前描画 (タイトル)
 	SET_ARGS MEM_BG0, DATA_TITLE+1, DATA_TITLE
-	jsr memcpy32
+	jsr memcpy16
 
 	SET_ARGS MEM_BG1, DATA_Register+1, DATA_Register
-	jsr memcpy32
+	jsr memcpy16
 	
 	SET_ARGS MEM_BG7, DATA_HELP+1, DATA_HELP
-	jsr memcpy32
+	jsr memcpy16
 	;
 	; 描画
 	SET_ARGS $2040, MEM_BG0, DATA_TITLE
 	WAIT_VBLANK
-	jsr DrawXLines
+	jsr Draw16XTiles
 	jsr DrawScrollZero
 
 	SET_ARGS $2280, MEM_BG1, DATA_Register
 	WAIT_VBLANK
-	jsr DrawXLines_width_19
+	jsr Draw16XTiles
 	jsr DrawScrollZero
 
 	SET_ARGS $2340, MEM_BG7, DATA_HELP
 	WAIT_VBLANK
-	jsr DrawXLines
+	jsr Draw16XTiles
 	jsr DrawScrollZero
 	;
 	; メモリの後始末
@@ -1009,11 +1015,11 @@ DrawInitialize:
 	rts
 
 DATA_TITLE:
-	.db 1 ; memcpy32 に渡す値 (行数)
+	.db (1) *2 ; memcpy16 に渡す値 (行数)*2
 	.!hira "010101010202020303　　ふぁみめむ80えでぃた　　030302020201010101"
 
 DATA_Register: ; 横幅 19
-	.db 6 ; memcpy に渡す値 (総バイト数)
+	.db (6) *2 ; memcpy16 に渡す値 (行数)*2
 	.db $1c,$cc,$98,$99,$9f,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$1d,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
 	.db $1a,$41,$3a,$2d,$2d,$00,$ff,$3a,$2d,$2d,$2d,$2d,$00,$00,$00,$00,$00,$00,$1a,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
 	.db $1a,$58,$3a,$2d,$2d,$00,$00,$00,$4e,$56,$52,$42,$44,$49,$5a,$43,$00,$00,$1a,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
@@ -1022,76 +1028,59 @@ DATA_Register: ; 横幅 19
 	.db $1e,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$1f,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
 
 DATA_HELP
-	.db 4
+	.db (4) *2 ; memcpy16 に渡す値 (行数)*2
 	;.!hira "Ａ＋じゅうじ：かーそるいどう　　Ｂ＋じゅうじ：あどれすへんこう　"
 	.db $d4,$2b,$d8,$d9,$da,$db,$3a,$8b,$2d,$9d,$cb,$84,$a9,$86,$00,$00,$d7,$2b,$da,$db,$3a,$af,$d3,$84,$97,$a6,$84,$26,$93,$b4,$2d,$00
 	.db $d5,$2b,$d8,$d9,$00,$00,$3a,$ba,$2d,$98,$84,$a9,$86,$00,$00,$00,$d7,$2b,$d9,$00,$3a,$ba,$2d,$99,$a8,$00,$00,$00,$00,$00,$00,$00
 	.db $7f,$2b,$d4,$d5,$00,$00,$3a,$ab,$c5,$86,$ca,$c7,$8f,$00,$00,$00,$d6,$00,$00,$00,$3a,$98,$a3,$93,$86,$00,$00,$00,$00,$00,$00,$00
 	.db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
 
-; _SRCA_ : 表示アドレス (通常:_base, デバッガ:PCの_base)
-DrawHex16Lines:
-	PUSH_REG 0,0,0,1,0
-	;
-	; BG バッファを初期化
-	SET_ARGS MEM_BG0, #0, #0 ; 256バイト扱い
-	jsr memset
-	;
-	; ADDR : NameTable
-	SET_ADDR $2080
-	;
-	; SRCA : _base
+; _SRCA_ : 表示させたいメモリ領域の先頭アドレス
+; 描画バッファに描画する
+BufDraw_MemoryViewer:
+	PUSH_REG 0,0,1,1,0
+
+	SET_ADDR MEM_BG0
+	SET_SRCA #0
+	SET_N #16
+	jsr memset16
+
+;	SET_SRCA_PTR _base
 	tsx
 	LOAD_STACK 2, _SRCA_
 	LOAD_STACK 1, _SRCA_+1
-	jsr DrawHex8Lines
-	;
-	; BG バッファを初期化
-	SET_ARGS MEM_BG0, #0, #0 ; 256バイト扱い
-	jsr memset
-	;
-	; ADDR : NameTable
-	SET_ADDR $2180
-	;
-	; SRCA : _base
-	tsx
-	LOAD_STACK 2, _SRCA_
-	LOAD_STACK 1, _SRCA_+1
-	;
-	; 次のアドレス
+	jsr BufDraw_addr_hex_32x8
+
+	SET_ADDR MEM_BG0+19
+;	SET_SRCA_PTR _base
+	jsr BufDraw_Asm_32x16
+
+	SET_ADDR MEM_BG8
 	SET_N #$20
 	jsr add_16_SRCA
-	jsr DrawHex8Lines
-
-	POP_REG 0,0,0,1,0
-	rts
-
-; _ADDR_ : Nametable
-; _SRCA_ : _base
-; _MM_ : 破壊
-DrawHex8Lines:
-	PUSH_REG 0,0,1,1,0
-	;
-	; 退避
-	SET_MMPTR _ADDR_
-	;
-	; 準備
-	SET_ADDR MEM_BG0
-;	SET_SRCA_PTR _base ; 引数で入力済み
 	jsr BufDraw_addr_hex_32x8
-	;
-	; 右側準備
-	SET_ADDR MEM_BG0+19
-	jsr BufDraw_Asm_13x8
 
-	; 描画
-	SET_ADDR_PTR _MM_ ; ★ #$2080 [2回目:#$2180]
-
+	POP_REG 0,0,1,1,0
+	rts
+;
+; 描画バッファを実際に描画する
+; 備考 : 30fps
+Draw_MemoryViewer:
+	SET_ADDR NAMETABLE04
 	WAIT_VBLANK
 	jsr Draw8Lines
 	jsr DrawScrollZero
+	;
+	; Draw8Lines は MEM_BG0 からの転送しか対応していない。
+	SET_ARGS MEM_BG0, MEM_BG8, #16
+	jsr memcpy16
 
-	POP_REG 0,0,1,1,0
+	SET_ADDR NAMETABLE12
+	WAIT_VBLANK
+	jsr Draw8Lines
+	jsr DrawScrollZero
+	SET_N #0
+	jsr Draw1Sprite
 	rts
 
 DrawSelectingCursor:
@@ -1130,7 +1119,25 @@ memset:
 
 	POP_REG 0,1,0,0,0
 	rts
+; _ADDR_ : 対象アドレス
+; _SRCR_ : 値 (アドレスではない)
+; _N_ : サイズ (16バイト単位) (max : 8)
+memset16:
+	PUSH_REG 1,1,0,0,0
+	
+	ldx _N_
+	lda _SRCA_
+	ldy #0
+	-
+		rept 16
+			sta (_ADDR_), y
+			iny
+		endr
+		dex
+	bne -
 
+	POP_REG 1,1,0,0,0
+	rts
 ; _ADDR_ : 対象アドレス
 ; _SRCA_ : ソースアドレス
 ; _N_ : サイズ
@@ -1150,29 +1157,23 @@ memcpy:
 
 ; _ADDR_ : 対象アドレス
 ; _SRCA_ : ソースアドレス
-; _N_ : サイズ (32バイト単位) (0 の場合 256 扱い)
-memcpy32:
-	PUSH_REG 1,1,1,1,1
+; _N_ : サイズ (16バイト単位) (max : 16)
+memcpy16:
+	PUSH_REG 1,1,0,0,0
 	
 	ldx _N_
+	ldy #0
 	-
-		ldy #0
-	rept 32
-		lda (_SRCA_), y
-		sta (_ADDR_), y
-		iny
-	endr
-		lda #32
-		sta _N_
-		jsr add_16_ADDR
-		jsr add_16_SRCA
+		rept 16
+			lda (_SRCA_), y
+			sta (_ADDR_), y
+			iny
+		endr
 
 		dex
-		beq +
-	jmp -
-	+
+	bne -
 
-	POP_REG 1,1,1,1,1
+	POP_REG 1,1,0,0,0
 	rts
 
 ; _ADDR_ : 対象
@@ -1205,7 +1206,7 @@ DrawScrollZero:
 	lda #0 ; Y座標
 	sta #$2005
 	rts
-
+;******************************************************************************
 ; _ADDR_ : 対象バッファ
 ; _SRCA_ : ソースメモリ
 BufDraw_addr_hex_32x8:
@@ -1307,7 +1308,7 @@ DATA_BIN2HEX:	.db "0123456789ABCDEF"
 
 ; _ADDR_ : 対象バッファ
 ; _SRCA_ : disasm 対象先頭メモリアドレス
-BufDraw_Asm_13x8
+BufDraw_Asm_32x16
 	PUSH_REG 1,1,1,1,0
 
 	ldx #1
@@ -1732,7 +1733,7 @@ DATA_ASM2ADRESSING:
 ; _ADDR_ : NAMETABLE
 ; 備考 : MEM_BG0 から 256 バイト書き込む
 Draw8Lines:
-if 0	
+if 0
 	; バランス ver
 	PUSH_REG 1,1,0,0,0
 
@@ -1743,7 +1744,7 @@ if 0
 
 	ldx #15
 	-
-		ldy Draw8Lines_table, x ; MEM_BG の インデックス
+		ldy DATA_Draw8Lines_table, x ; MEM_BG の インデックス
 		i=0
 	    REPT 16
 			lda MEM_BG0+i, y
@@ -1756,7 +1757,7 @@ if 0
 	POP_REG 1,1,0,0,0
 	rts
 
-	Draw8Lines_table:
+	DATA_Draw8Lines_table:
 		.db 240,224,208,192,176,160,144,128,112,96,80,64,48,32,16,0
 else
 	; 最大速度ver
@@ -1767,8 +1768,8 @@ else
 
 	i=0
 	REPT 256
-		lda MEM_BG0+i
-		sta #$2007
+		lda MEM_BG0+i	; 4 clock
+		sta #$2007		; 4 clock
 		i=i+1
 	ENDR
 	rts
@@ -1776,8 +1777,8 @@ endif
 
 ; _ADDR_ : NameTable
 ; _SRCA_ : MEM_BG
-; _N_    : 行数 (最大:約6行)
-DrawXLines:
+; _N_    : 16ブロック単位 (最大:約6行)
+Draw16XTiles:
 	PUSH_REG 1,1,0,0,0
 
 	lda _ADDR_+1
@@ -1787,93 +1788,15 @@ DrawXLines:
 	ldx _N_
 	ldy #0 ; MEM_BG の インデックス
 	-
-		dex
-		bpl +
-			jmp ++
-		+
-	    REPT 32
+	    REPT 16
 			lda (_SRCA_), y
 			sta #$2007
 			iny
 	    ENDR
-	jmp -
-	++
+		dex
+	bne -
 
 	POP_REG 1,1,0,0,0
-	rts
-
-; _ADDR_ : NameTable
-; _SRCA_ : MEM_BG
-; _N_    : 行数 (最大:約?行)
-DrawXLines_width_13:
-	PUSH_REG 1,1,1,1,1
-
-	lda _ADDR_+1
-	sta #$2006
-	lda _ADDR_
-	sta #$2006
-	ldx _N_
-	SET_N #32
-	ldy #0 ; MEM_BG の インデックス
-	-
-		dex
-		bpl +
-			jmp ++
-		+
-	    REPT 13
-			lda (_SRCA_), y
-			sta #$2007
-			iny
-	    ENDR
-
-		ldy #0
-		jsr add_16_SRCA
-		jsr add_16_ADDR
-		lda _ADDR_+1
-		sta #$2006
-		lda _ADDR_
-		sta #$2006
-	jmp -
-	++
-
-	POP_REG 1,1,1,1,1
-	rts
-
-; _ADDR_ : NameTable
-; _SRCA_ : MEM_BG
-; _N_    : 行数 (最大:約?行)
-DrawXLines_width_19:
-	PUSH_REG 1,1,1,1,1
-
-	lda _ADDR_+1
-	sta #$2006
-	lda _ADDR_
-	sta #$2006
-	ldx _N_
-	SET_N #32
-	ldy #0 ; MEM_BG の インデックス
-	-
-		dex
-		bpl +
-			jmp ++
-		+
-	    REPT 19
-			lda (_SRCA_), y
-			sta #$2007
-			iny
-	    ENDR
-
-		ldy #0
-		jsr add_16_SRCA
-		jsr add_16_ADDR
-		lda _ADDR_+1
-		sta #$2006
-		lda _ADDR_
-		sta #$2006
-	jmp -
-	++
-
-	POP_REG 1,1,1,1,1
 	rts
 
 ; _N_ : spr id
@@ -2017,7 +1940,7 @@ DrawRegisters:
 	;
 	; 枠組み描画
 	SET_ARGS MEM_BG0, DATA_Register+1, DATA_Register
-	jsr memcpy32
+	jsr memcpy16
 	;
 	; A レジスタ
 	SET_ADDR MEM_BG1+3
@@ -2098,7 +2021,7 @@ DrawRegisters:
 	SET_ARGS NAMETABLE20, MEM_BG0, DATA_Register
 	WAIT_VBLANK
 	WAIT_VBLANK
-	jsr DrawXLines_width_19
+	jsr Draw16XTiles
 	jsr DrawScrollZero
 	WAIT_VBLANK
 	SET_N #$0
@@ -2112,7 +2035,8 @@ DrawRegisters:
 		sta _SRCA_
 		lda _reg_pc1
 		sta _SRCA_+1
-		jsr DrawHex16Lines
+		jsr BufDraw_MemoryViewer
+		jsr Draw_MemoryViewer
 	+
 	rts
 
