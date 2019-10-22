@@ -411,8 +411,6 @@ RESET:
 	;sta $2000
 	jsr DrawInitialize
 	SET_SRCA_PTR _base
-;	jsr DrawHex16Lines
-	jsr BufDraw_MemoryViewer
 	jsr Draw_MemoryViewer
 ;
 ; メインループ
@@ -448,12 +446,7 @@ MainLoop:
 	+
 	;
 	; メモリビュワー
-;		SET_SRCA_PTR _base
-;		jsr DrawHex16Lines
-;		SET_N #0
-;		jsr Draw1Sprite
 		SET_SRCA_PTR _base
-		jsr BufDraw_MemoryViewer
 		jsr Draw_MemoryViewer
 	++
 	jmp MainLoop
@@ -1036,51 +1029,66 @@ DATA_HELP
 	.db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
 
 ; _SRCA_ : 表示させたいメモリ領域の先頭アドレス
-; 描画バッファに描画する
-BufDraw_MemoryViewer:
+; 描画バッファを実際に描画する
+; 備考 : 30fps
+Draw_MemoryViewer:
 	PUSH_REG 0,0,1,1,0
-
+	;
+	;   (MEM_BG0 はここでバッファクリア)
 	SET_ADDR MEM_BG0
 	SET_SRCA #0
 	SET_N #16
 	jsr memset16
-
+	;
+	; ■ 1-1.BUF描画1 (memory 0x0000)
+	SET_ADDR MEM_BG0
 ;	SET_SRCA_PTR _base
 	tsx
-	LOAD_STACK 2, _SRCA_
 	LOAD_STACK 1, _SRCA_+1
+	LOAD_STACK 2, _SRCA_
 	jsr BufDraw_addr_hex_32x8
-
+	;
+	;   1-2.BUF描画1 (disasm)
 	SET_ADDR MEM_BG0+19
-;	SET_SRCA_PTR _base
+	lda _curaddr
+	;and #$FC
+	sta _SRCA_
 	jsr BufDraw_Asm_32x16
-
-	SET_ADDR MEM_BG8
-	SET_N #$20
-	jsr add_16_SRCA
-	jsr BufDraw_addr_hex_32x8
-
-	POP_REG 0,0,1,1,0
-	rts
-;
-; 描画バッファを実際に描画する
-; 備考 : 30fps
-Draw_MemoryViewer:
+	;
+	;   1-3.実描画1 (0-7)
 	SET_ADDR NAMETABLE04
 	WAIT_VBLANK
 	jsr Draw8Lines
 	jsr DrawScrollZero
 	;
-	; Draw8Lines は MEM_BG0 からの転送しか対応していない。
+	; ■ 2-1.BUF描画2 (mem 0x0020)
+	SET_ADDR MEM_BG8
+	tsx
+	LOAD_STACK 1, _SRCA_+1
+	LOAD_STACK 2, _SRCA_
+	SET_N #$20
+	jsr add_16_SRCA
+	jsr BufDraw_addr_hex_32x8	
+	;
+	;   (Draw8Lines は MEM_BG0 からの転送しか対応していない。)
 	SET_ARGS MEM_BG0, MEM_BG8, #16
 	jsr memcpy16
-
+	;
+	;   (MEM_BG8 はここでバッファクリア)
+	SET_ADDR MEM_BG8
+	SET_SRCA #0
+	SET_N #16
+	jsr memset16
+	;
+	;   2-2.実描画2 (8-15)
 	SET_ADDR NAMETABLE12
 	WAIT_VBLANK
 	jsr Draw8Lines
 	jsr DrawScrollZero
 	SET_N #0
 	jsr Draw1Sprite
+
+	POP_REG 0,0,1,1,0
 	rts
 
 DrawSelectingCursor:
@@ -1311,13 +1319,9 @@ DATA_BIN2HEX:	.db "0123456789ABCDEF"
 BufDraw_Asm_32x16
 	PUSH_REG 1,1,1,1,0
 
-	ldx #1
+	ldx #16
 	ldy #0
 	-
-;		jsr BufDraw_DisAsm ;(+11)
-;		SET_N #21
-;		jsr add_16_ADDR
-
 		lda (_SRCA_),y
 		sta _N_
 		jsr bin2asm
@@ -1326,10 +1330,11 @@ BufDraw_Asm_32x16
 		jsr add_16_ADDR
 
 		jsr bin2adressing
-; 		SET_N #4
-;		jsr add_16_ADDR
 
-;		iny
+		SET_N _N_+1
+		jsr add_16_SRCA
+ 		SET_N #27
+		jsr add_16_ADDR
 		dex
 	bne -
 
@@ -1361,8 +1366,9 @@ bin2asm:
 ; 説明 : _SRCA_ の指す値を元に、その ASM に対応する Adressing 文字列 6バイトに変換し、指定アドレスに書き込む。
 ; _ADDR_ : 文字列を書き込むアドレス
 ; _SRCA_ : ソースアドレス
+; 返り値(_N_+1) : 読み取りバイト数
 bin2adressing:
-	PUSH_REG 1,1,0,0,1
+	PUSH_REG 1,1,1,0,1
 	;
 	; ASM を読む
 	ldy #0
@@ -1371,6 +1377,15 @@ bin2adressing:
 	; アドレッシングに応じてジャンプ
 	tax
 	lda DATA_DISASMADRESSING, x
+	;
+	; 先に読み取りバイト数を返り値にセットしておく
+	tax
+	pha
+	lda DATA_bin2adressing_bytes, x
+	sta _N_+1
+	;
+	; アドレッシングに応じてジャンプ (続き)
+	pla
 	ASL_n 1
 	tax
 	lda DATA_bin2adressing ,x
@@ -1382,6 +1397,10 @@ DATA_bin2adressing:
 	.dw bin2adressing_n, bin2adressing_imm, bin2adressing_zp, bin2adressing_addr
 	.dw bin2adressing_zpX, bin2adressing_zpY, bin2adressing_addrX, bin2adressing_addrY
 	.dw bin2adressing_indX, bin2adressing_indY, bin2adressing_ind, bin2adressing_unknown
+DATA_bin2adressing_bytes:
+	.db 1, 2, 2, 3
+	.db 2, 2, 3, 3
+	.db 2, 2, 3, 1
 ; 00:      04:00,x    08:(00,x)
 ; 01:#00   05:00,y    09:(00),y
 ; 02:00    06:0000,x  10:(0000)
@@ -1633,7 +1652,7 @@ bin2adressing_ind:
 bin2adressing_unknown:
 	jmp bin2adressing_n
 bin2adressing_END:
-	POP_REG 1,1,0,0,1
+	POP_REG 1,1,1,0,1
 	rts
 
 DATA_BIN2ASMID:
@@ -2035,7 +2054,6 @@ DrawRegisters:
 		sta _SRCA_
 		lda _reg_pc1
 		sta _SRCA_+1
-		jsr BufDraw_MemoryViewer
 		jsr Draw_MemoryViewer
 	+
 	rts
