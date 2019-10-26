@@ -2,11 +2,11 @@
 ;// iNES ﾍｯﾀﾞ 定義
 ;//	[PRGﾊﾞﾝｸ 1, CHRﾊﾞﾝｸ 1, 水平ﾐﾗｰ, SRAM有り, MAPPER:0]
 NES_header 1, 1, 1, 1, 0
-
 ;// $8000-BFFF : PRG-ROM (LOW) 領域
 ;// $C000-FFFF : PRG-ROM (HIGH) 領域
 .org $C000
 	.include src/main.1.asm
+	.include src/_routine.asm
 
 .org $FFD0	; パレットはここに配置しておく
 PALLET:

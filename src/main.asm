@@ -11,7 +11,7 @@
 	_curaddr	= $D6
 	_curaddr1	= $D7
 
-	_BaseOfsIdx	= $D8	;// 0:0000, 1:6000, 2:8000
+	_base_preset_n	= $D8	;// 0:0000, 1:6000, 2:8000
 	_padMode 	= $D9
 	_is_Hex_Changing = $DA
 	_is_need_AllDraw = $DB
@@ -19,7 +19,7 @@
 	_count		= $DC
 	_count1		= $DD
 	_pad1dir8	= $DE
-	_reserve	= $DF
+	_reg_s_exec	= $DF
 
 	_select_y		= $E0
 	_selectN		= $E1
@@ -39,305 +39,26 @@
 	_reg_p	= $EE
 	_reg_pc_last = $EF
 
-	; ボタン
-	_pad1	= $F0
-	_pad11	= $F1
-	_pad12	= $F2
-	_pad13	= $F3
-	_pad2	= $F4
-	_pad21	= $F5
-	_pad22	= $F6
-	_pad23	= $F7
+	; Asm 関連
+	_is_AsmEdit = $C0
 
-	; ルーチンで使用
-	_N_		= $F8 ; 8 bit の値を渡すのに使用
-	_N1_	= $F9
-	_MM_	= $FA ; 汎用 (Switch ルーチンのジャンプアドレス)
-	_MM1_	= $FB
-	_ADDR_	= $FC ; 16 bit のアドレスを渡すのに使用
-	_ADDR1_ = $FD
-	_SRCA_  = $FE ; 16 bit のアドレスを渡すのに使用
-	_SRCA1_ = $FF
-; $0100 : スタック
-	STACK		EQU $0100
-; $0200 : スプライトバッファ
-	MEM_SP0		EQU $0200
-	MEM_SP1		EQU $0204
-	MEM_SP2		EQU $0208
-	MEM_SP3		EQU $020C
-	MEM_SP4		EQU $0210
-	MEM_SP5		EQU $0214
-	MEM_SP6		EQU $0218
-	MEM_SP7		EQU $021C
-	MEM_SP8		EQU $0220
-	MEM_SP9		EQU $0224
-	MEM_SP10	EQU $0228
-	MEM_SP11	EQU $022C
-	MEM_SP12	EQU $0230
-	MEM_SP13	EQU $0234
-	MEM_SP14	EQU $0238
-	MEM_SP15	EQU $023C
-	MEM_SP16	EQU $0240
-	MEM_SP17	EQU $0244
-	MEM_SP18	EQU $0248
-	MEM_SP19	EQU $024C
-	MEM_SP20	EQU $0250
-	MEM_SP21	EQU $0254
-	MEM_SP22	EQU $0258
-	MEM_SP23	EQU $025C
-	MEM_SP24	EQU $0260
-	MEM_SP25	EQU $0264
-	MEM_SP26	EQU $0268
-	MEM_SP27	EQU $026C
-	MEM_SP28	EQU $0270
-	MEM_SP29	EQU $0274
-	MEM_SP30	EQU $0278
-	MEM_SP31	EQU $027C
-	MEM_SP32	EQU $0280
-	MEM_SP33	EQU $0284
-	MEM_SP34	EQU $0288
-	MEM_SP35	EQU $028C
-	MEM_SP36	EQU $0290
-	MEM_SP37	EQU $0294
-	MEM_SP38	EQU $0298
-	MEM_SP39	EQU $029C
-	MEM_SP40	EQU $02A0
-	MEM_SP41	EQU $02A4
-	MEM_SP42	EQU $02A8
-	MEM_SP43	EQU $02AC
-	MEM_SP44	EQU $02B0
-	MEM_SP45	EQU $02B4
-	MEM_SP46	EQU $02B8
-	MEM_SP47	EQU $02BC
-	MEM_SP48	EQU $02C0
-	MEM_SP49	EQU $02C4
-	MEM_SP50	EQU $02C8
-	MEM_SP51	EQU $02CC
-	MEM_SP52	EQU $02D0
-	MEM_SP53	EQU $02D4
-	MEM_SP54	EQU $02D8
-	MEM_SP55	EQU $02DC
-	MEM_SP56	EQU $02E0
-	MEM_SP57	EQU $02E4
-	MEM_SP58	EQU $02E8
-	MEM_SP59	EQU $02EC
-	MEM_SP60	EQU $02F0
-	MEM_SP61	EQU $02F4
-	MEM_SP62	EQU $02F8
-	MEM_SP63	EQU $02FC
+	; $F0-$FF : 汎用
 
-; $0300 : BGバッファ (8行分)
-	MEM_BG0		EQU $0300
-	MEM_BG1		EQU $0320
-	MEM_BG2		EQU $0340
-	MEM_BG3		EQU $0360
-	MEM_BG4		EQU $0380
-	MEM_BG5		EQU $03A0
-	MEM_BG6		EQU $03C0
-	MEM_BG7		EQU $03E0
-; $0400 : BGバッファ (8行分)
-	MEM_BG8		EQU $0400
-	MEM_BG9		EQU $0420
-	MEM_BG10	EQU $0440
-	MEM_BG11	EQU $0460
-	MEM_BG12	EQU $0480
-	MEM_BG13	EQU $04A0
-	MEM_BG14	EQU $04C0
-	MEM_BG15	EQU $04E0
-
-; $0500 :
-; $0600
-; $0700
+; $0200-$4FF
+;	SPBUF[$100], BGBUF[$200]
+; $0500
 	_copy_buf	= $700 ; $700-$73F
+; $0600
+;	(未使用)
+; $0700
+;	(未使用)
 
 ;■ 定数
-; ボタン (一般のファミコンゲームとは逆になっているが、こちらが好み。)
-	pad_A		EQU #$01
-	pad_B		EQU #$02
-	pad_select	EQU #$04
-	pad_start	EQU #$08
-	pad_Up		EQU #$10
-	pad_Down	EQU #$20
-	pad_Left	EQU #$40
-	pad_Right	EQU #$80
 ; 座標計算
 	Y_OFS		EQU $20 ; 上4行空けてカーソルを表示する際のオフセット値
 	X_OFS		EQU $2F ; "0000:" の分 - 文字との右間隔 を空けてカーソルを表示する際のオフセット値
 
-;■ メモリアドレス
-; $6000 : SRAM
-	SRAM	EQU $6000
-; $2000 : NAMETABLE
-	NAMETABLE00 EQU $2000
-	NAMETABLE01 EQU $2020
-	NAMETABLE02 EQU $2040
-	NAMETABLE03 EQU $2060
-	NAMETABLE04 EQU $2080
-	NAMETABLE05 EQU $20A0
-	NAMETABLE06 EQU $20C0
-	NAMETABLE07 EQU $20E0
-	NAMETABLE08 EQU $2100
-	NAMETABLE09 EQU $2120
-	NAMETABLE10 EQU $2140
-	NAMETABLE11 EQU $2160
-	NAMETABLE12 EQU $2180
-	NAMETABLE13 EQU $21A0
-	NAMETABLE14 EQU $21C0
-	NAMETABLE15 EQU $21E0
-	NAMETABLE16 EQU $2200
-	NAMETABLE17 EQU $2220
-	NAMETABLE18 EQU $2240
-	NAMETABLE19 EQU $2260
-	NAMETABLE20 EQU $2280
-	NAMETABLE21 EQU $22A0
-	NAMETABLE22 EQU $22C0
-	NAMETABLE23 EQU $22E0
-	NAMETABLE24 EQU $2300
-	NAMETABLE25 EQU $2320
-	NAMETABLE26 EQU $2340
-	NAMETABLE27 EQU $2360
-	NAMETABLE28 EQU $2380
-	NAMETABLE29 EQU $23A0
-
-;*****************************************************************************;
-; macro
-macro SET_ADDR ADDR
-	lda #<(ADDR)
-	sta _ADDR_
-	lda #>(ADDR)
-	sta _ADDR_+1
-endm
-macro SET_ADDR_PTR ADDR
-	lda ADDR
-	sta _ADDR_
-	lda ADDR+1
-	sta _ADDR_+1
-endm
-macro SET_SRCA SRCA
-	lda #<(SRCA)
-	sta _SRCA_
-	lda #>(SRCA)
-	sta _SRCA_+1
-endm
-macro SET_SRCA_PTR SRCA
-	lda SRCA
-	sta _SRCA_
-	lda SRCA+1
-	sta _SRCA_+1
-endm
-macro SET_N N
-	lda N
-	sta _N_
-endm
-macro SET_MMPTR MM
-	lda MM
-	sta _MM_
-	lda MM+1
-	sta _MM_+1
-endm
-macro SET_ARGS ADDR,SRCA,N
-	SET_ADDR ADDR
-	SET_SRCA SRCA
-	SET_N N
-endm
-macro PUSH_REG X,Y,ADDR,SRCA,N
-	if X=1
-		txa
-		pha
-	endif
-	if Y=1
-		tya
-		pha
-	endif
-	if ADDR=1
-		lda _ADDR_
-		pha
-		lda _ADDR_+1
-		pha
-	endif
-	if SRCA=1
-		lda _SRCA_
-		pha
-		lda _SRCA_+1
-		pha
-	endif
-	if N=1
-		lda _N_
-		pha
-		lda _MM_
-		pha
-		lda _MM_+1
-		pha
-	endif
-endm
-
-macro POP_REG X,Y,ADDR,SRCA,N
-	if N=1
-		pla
-		sta _MM_+1
-		pla
-		sta _MM_
-		pla
-		sta _N_
-	endif
-	if SRCA=1
-		pla
-		sta _SRCA_+1
-		pla
-		sta _SRCA_
-	endif
-	if ADDR=1
-		pla
-		sta _ADDR_+1
-		pla
-		sta _ADDR_
-	endif
-	if Y=1
-		pla
-		tay
-	endif
-	if X=1
-		pla
-		tax
-	endif
-endm
-;
-; 事前に tsx すること
-macro LOAD_STACK N, MMMM
-	lda STACK+N, x
-	sta MMMM
-endm
-
-macro LSR_n N
-	rept N
-		lsr
-	endr
-endm
-
-macro ASL_n N
-	rept N
-		asl
-	endr
-endm
-
-macro WAIT_VBLANK
-	-	bit $2002
-	bpl -
-endm
-
-macro SET_SPBUF N, y, chr, attr, x
-	lda y		; Y座標
-	sta (MEM_SP0+(N*4)+0)
-	lda chr		; キャラ番号
-	sta (MEM_SP0+(N*4)+1)
-	lda attr	; 反転・優先順位
-	sta (MEM_SP0+(N*4)+2)
-	lda x		; X座標
-	sta (MEM_SP0+(N*4)+3)
-endm
-;*****************************************************************************;
-;// 関数
-;
+;*****************************************************************************
 ; 電源投入後最初に実行
 RESET: 
 	;
@@ -407,50 +128,27 @@ RESET:
 	; PPU 有効化・NMI はそのまま
 	lda #%00011110 ; 赤 緑 青 SP BG cS cB 色
 	sta $2001
-	;lda #%10000000 ; NMI ? SPsize BGbase SPbase BG縦横 MainScreen(2bit)
+	;lda #%10000000 ; NMI - SPsize BGbase SPbase BG縦横 MainScreen(2bit)
 	;sta $2000
 	jsr DrawInitialize
 	SET_SRCA_PTR _base
 	jsr Draw_MemoryViewer
-;
-; メインループ
-MainLoop:
-	jsr GetJoyPad
-	jsr Get8Direction
 	;
-	; 処理
-	jsr SelectRoutine
-	jsr CalcCursor
-	;
-	; カウンタ
-	inc _count
-	bne +
-		inc _count+1
-	+
-	;
-	; カーソル
-	lda #$09 ; キャラ番号
-	sta MEM_SP0 + 1
-	;
-	; ■ 描画
-	; 選択カーソル
-	lda _is_selecting
-	beq +
-		jsr DrawSelectingCursor
-		jmp ++
-	+
-	lda _pad1+2
-	and #pad_start
-	beq +
-		jsr CleanSelectingCursor
-	+
-	;
-	; メモリビュワー
-		SET_SRCA_PTR _base
-		jsr Draw_MemoryViewer
-	++
-	jmp MainLoop
-
+	; メインループ
+	-
+		;
+		; 入力
+		jsr GetJoyPad
+		jsr Get8Direction
+		;
+		; 処理
+		jsr SelectRoutine
+		jsr CalcCursor
+		jsr Count
+		;
+		; 描画
+		jsr Draw
+	jmp -
 ;
 ; ボタンの組み合わせによって、実行するルーチンを分岐させる
 SelectRoutine:
@@ -480,8 +178,11 @@ SelectRoutine:
 		sta _padMode
 	++
 	;
-	; padMode に応じて分岐
-	lda _padMode
+	; padMode + AsmModeに応じて分岐
+	lda _is_AsmEdit
+	ASL_n 3
+	clc
+	adc _padMode
 	ASL_n 1 ; dw 配列を読むので 2 倍しておく
 	tax
 	lda DATA_SelectRoutine_func, x
@@ -490,8 +191,23 @@ SelectRoutine:
 	sta _MM_+1
 	jmp (_MM_)
 DATA_SelectRoutine_func:
-	.dw nonefunc, MoveCursor, ChangeBaseAddr, Exec, OtherFunc
-	.dw EditHex ; 5:十時キー
+	.dw nonefunc
+	.dw MoveCursor		; A
+	.dw ChangeBaseAddr	; B
+	.dw Exec			; select
+	.dw OtherFunc		; start
+	.dw EditHex			; 十時キー
+	.dw nonefunc		; -
+	.dw nonefunc		; -
+
+	.dw AsmNonefunc
+	.dw AsmNonefunc
+	.dw AsmNonefunc
+	.dw AsmNonefunc
+	.dw AsmNonefunc
+	.dw AsmNonefunc
+	.dw AsmNonefunc
+	.dw AsmNonefunc
 
 ; A:1, B:2, start:3, select:4, 十字キー:5
 DATA_SelectRoutine
@@ -500,66 +216,7 @@ DATA_SelectRoutine
 	.db 4, 0, 0, 0	; S - - - 
 	.db 0, 0, 0, 0	; - - - - 
 ;
-;*****************************************************************************;
-
-; コントローラーの情報を取得
-;	pad1+0 : 現在の状態
-;	pad1+1 : 押した瞬間
-;	pad1+2 : 離した瞬間
-;	pad1+3 : 1フレーム前 
-GetJoyPad:
-	;
-	; 1フレーム前のボタン情報を保存
-	lda _pad1
-	sta _pad1+3
-	lda _pad2
-	sta _pad2+3
-	;
-	; ボタン取得 [A B select start ↑ ↓ ← →]
-	lda #1
-	sta $4016
-	lda #0 
-	sta $4016
-	ldx #8
-	-	lda $4016 ; 1P
-		ror
-		ror _pad1
-		lda $4017 ; 2P
-		ror
-		ror _pad2
-		dex
-	bne -
-	;
-	; ボタン計算 (押した瞬間・離した瞬間 の算出)
-	ldx #1
-	ldy #0
-	-	lda _pad1, y
-		eor _pad1+3, y
-		pha
-		and _pad1, y
-		sta _pad1+1, y
-		pla
-		and _pad1+3, y
-		sta _pad1+2, y
-		ldy #_pad2-#_pad1 ; インデックス計算
-		dex
-	bpl -
-	rts
-
-Get8Direction:
-	lda _pad1
-	LSR_n 4
-	tax
-	lda DATA_Get8Direction, x
-	sta _pad1dir8
-	rts
-
-DATA_Get8Direction:
-	.db $FF, $00, $04, $FF
-	.db $06, $07, $05, $FF
-	.db $02, $01, $03, $FF
-	.db $FF, $FF, $FF, $FF
-
+;*****************************************************************************
 EditHex:
 	;
 	; 0 - 15 を取得
@@ -650,139 +307,65 @@ MoveCursor:		;_x, _y の変更
 	+
 	rts
 
-CalcCursor:
+ChangeBaseAddr:
 	;
-	; x 正規化
-	lda _x
-	cmp #255
-	bne +
-		dec _y
-	+
-	cmp #4
-	bne +
-		inc _y
-	+
-	and #3
-	sta _x
-	;
-	; y 正規化
-	lda _y
-	and #15
-	sta _y
-	;
-	; y, x カーソル座標 算出
-	lda _y
-	ASL_n 3
-	clc
-	adc #Y_OFS 	; 表示調整オフセットを足す
-	sta _y_View
-	dec _y_View	; スプライトは下に 1pxcel ずれる。さらに調整
-
-	lda _x
-	ASL_n 1
-	clc
-	adc _x
-	adc _is_Hex_Changing
-	ASL_n 3
-	clc
-	adc #X_OFS
-	sta _x_View
-	;
-	; カーソル処理
-	lda _y_View ; Y座標
-	sta MEM_SP0 + 0
-	lda _x_View ; X座標
-	sta MEM_SP0 + 3
-	;
-	; カレントアドレス計算
-	lda _base
-	sta _ADDR_
-	lda _base+1
-	sta _ADDR_+1
-	lda _y		; _y * 4
-	ASL_n 2
-	clc			; + _x
-	adc _x
-	sta _N_
-	jsr add_16_ADDR
-	lda _ADDR_
-	sta _curaddr
-	lda _ADDR_+1
-	sta _curaddr+1
-	rts
-
-ChangeBaseAddr:	; base アドレスの変更
+	; base アドレスの変更
 	lda _pad1+1
-	and #pad_Right
+	and #pad_Down
 	beq ++
-		lda _base
-		clc
-		adc #$40
-		sta _base
-		bcc +
-			inc _base+1
-		+
+		ADD_16 _base, #$40
 	++
+	lda _pad1+1
+	and #pad_Up
+	beq ++
+		SUB_16 _base, #$40		
+	++
+	;
+	; base アドレスの変更 (プリセット)
 	lda _pad1+1
 	and #pad_Left
 	beq ++
-		lda _base
-		sec
-		sbc #$40
-		sta _base
-		bcs +
-			dec _base+1
+		inc _base_preset_n
+		lda _base_preset_n
+		cmp #3
+		bmi +
+			lda #0
+			sta _base_preset_n
 		+
-	++
-
-	lda _pad1+1
-	and #pad_Down | #pad_Up
-	beq ++
-		lda _pad1+1
-		and #pad_Down
-		beq +
-			inc _BaseOfsIdx
-			lda _BaseOfsIdx
-			cmp #3
-			bmi +++ ; _BaseOfsIdx < 3 のときスキップ
-				lda #0
-				sta _BaseOfsIdx
-			+++
-		+
-		lda _pad1+1
-		and #pad_Up
-		beq +
-			dec _BaseOfsIdx
-			bit _BaseOfsIdx
-			bpl +++
-				lda #2
-				sta _BaseOfsIdx
-			+++
-		+
-
-		; Base を既定アドレスに変更
-		lda _BaseOfsIdx
+		lda _base_preset_n
 		tax
 		lda #$00
 		sta _base
-		lda DATA_ChangeBaseAddr, x
+		lda DATA_ChangeBaseAddr_Preset, x
 		sta _base+1
+	++
+	;
+	; ASM モード 切替
+	lda _pad1+1
+	and #pad_Right
+	beq ++
+		lda #1
+		sta _is_AsmEdit
 	++
 	rts
 
-DATA_ChangeBaseAddr:
-	.db >$0000, >$6000, >$8000 ; 下バイトは全部 $00 なので、上だけで良い.
+DATA_ChangeBaseAddr_Preset:
+	.dh $0000, $6000, $8000 ; 下バイトは全部 $00 なので、上だけで良い.
 
 Exec: ; 実行
-;
-; 押した瞬間でなければ Return
+	;
+	; 押した瞬間でなければ Return
 	lda _pad1+1
 	and #pad_select
 	bne +
 		rts
 	+
-;
-; A,X,Y をクリアしてから実行
+	;
+	; EndDebug で中断できるようスタックを退避
+	tsx
+	stx _reg_s_exec
+	;
+	; A,X,Y をクリアしてから実行
 	lda #0
 	tax
 	tay
@@ -965,8 +548,103 @@ calc_SelectRenge:
 
 nonefunc:
 	rts
-;
+;******************************************************************************
+AsmNonefunc:
+	rts
+
+;******************************************************************************
+CalcCursor:
+	;
+	; x 正規化
+	lda _x
+	cmp #255
+	bne +
+		dec _y
+	+
+	cmp #4
+	bne +
+		inc _y
+	+
+	and #3
+	sta _x
+	;
+	; y 正規化
+	lda _y
+	and #15
+	sta _y
+	;
+	; y, x カーソル座標 算出
+	lda _y
+	ASL_n 3
+	clc
+	adc #Y_OFS 	; 表示調整オフセットを足す
+	sta _y_View
+	dec _y_View	; スプライトは下に 1pxcel ずれる。さらに調整
+
+	lda _x
+	ASL_n 1
+	clc
+	adc _x
+	adc _is_Hex_Changing
+	ASL_n 3
+	clc
+	adc #X_OFS
+	sta _x_View
+	;
+	; カーソル処理
+	lda _y_View ; Y座標
+	sta MEM_SP0 + 0
+	lda _x_View ; X座標
+	sta MEM_SP0 + 3
+	;
+	; カレントアドレス計算
+	lda _base
+	sta _ADDR_
+	lda _base+1
+	sta _ADDR_+1
+
+	lda _y		; _y * 4
+	ASL_n 2
+	clc			; + _x
+	adc _x
+	sta _N_
+	jsr add_16_ADDR
+
+	lda _ADDR_
+	sta _curaddr
+	lda _ADDR_+1
+	sta _curaddr+1
+	rts
+
+Count
+	;
+	; カウンタ
+	inc _count
+	bne +
+		inc _count+1
+	+
+	rts
+;******************************************************************************
 ; 描画関係
+Draw:
+	; 選択カーソル
+	lda _is_selecting
+	beq +
+		jsr DrawSelectingCursor
+		jmp ++
+	+
+	lda _pad1+2
+	and #pad_start
+	beq +
+		jsr CleanSelectingCursor
+	+
+		;
+		; メモリビュワー
+		SET_SRCA_PTR _base
+		jsr Draw_MemoryViewer
+	++
+	rts
+
 DrawInitialize:
 	;
 	; スプライト初期化 (これがないと EverDrive 起動時、ゴミが表示される)
@@ -1003,11 +681,10 @@ DrawInitialize:
 	jsr DrawScrollZero
 	;
 	; メモリの後始末
-;	SET_ARGS MEM_BG0, #0, #0 ; SRCA はアドレスではなく、値として使用. memset の N は 0 指定で 256 扱い.
-;	jsr memset
-;	SET_ARGS MEM_BG8, #0, #0
-;	jsr memset
-
+	SET_ARGS MEM_BG0, #0, #16 ; SRCA はアドレスではなく、値として使用. memset の N は 0 指定で 256 扱い.
+	jsr memset16
+	SET_ARGS MEM_BG8, #0, #16
+	jsr memset16
 	rts
 
 DATA_TITLE:
@@ -1018,7 +695,7 @@ DATA_Register: ; 横幅 19
 	.db 6	; 行数 (DrawXLines で使用. memcpy16 に渡す際は *2 すること！)
 	.db $1c,$cc,$98,$99,$9f,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$1d,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
 	.db $1a,$41,$3a,$2d,$2d,$00,$ff,$3a,$2d,$2d,$2d,$2d,$00,$00,$00,$00,$00,$00,$1a,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
-	.db $1a,$58,$3a,$2d,$2d,$00,$00,$00,$4e,$56,$52,$42,$44,$49,$5a,$43,$00,$00,$1a,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+	.db $1a,$58,$3a,$2d,$2d,$00,$00,$00,$4e,$56,$72,$62,$64,$69,$5a,$43,$00,$00,$1a,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
 	.db $1a,$59,$3a,$2d,$2d,$00,$50,$3a,$10,$10,$10,$10,$10,$10,$10,$10,$2d,$2d,$1a,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
 	.db $1a,$53,$3a,$2d,$2d,$5b,$2d,$2d,$00,$2d,$2d,$20,$2d,$2d,$20,$2d,$2d,$5d,$1a,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
 	.db $1e,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$1f,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
@@ -1045,7 +722,7 @@ Draw_MemoryViewer:
 	;
 	; ■ 1-1.BUF描画1 (memory 0x0000)
 	SET_ADDR MEM_BG0
-;	SET_SRCA_PTR _base
+	;SET_SRCA_PTR _base
 	tsx
 	LOAD_STACK 1, _SRCA_+1
 	LOAD_STACK 2, _SRCA_
@@ -1113,110 +790,6 @@ CleanSelectingCursor:
 	jsr DrawAllSprites 
 	rts
 
-
-;*****************************************************************************;
-; 汎用関数
-; _ADDR_ : 対象アドレス
-; _SRCR_ : 値 (アドレスではない)
-; _N_ : サイズ (0-255)
-memset:
-	PUSH_REG 0,1,0,0,0
-
-	lda _SRCA_
-	ldy _N_
-	-	sta (_ADDR_), y
-		dey
-	bne -
-
-	POP_REG 0,1,0,0,0
-	rts
-; _ADDR_ : 対象アドレス
-; _SRCR_ : 値 (アドレスではない)
-; _N_ : サイズ (16バイト単位) (max : 8)
-memset16:
-	PUSH_REG 1,1,0,0,0
-	
-	ldx _N_
-	lda _SRCA_
-	ldy #0
-	-
-		rept 16
-			sta (_ADDR_), y
-			iny
-		endr
-		dex
-	bne -
-
-	POP_REG 1,1,0,0,0
-	rts
-; _ADDR_ : 対象アドレス
-; _SRCA_ : ソースアドレス
-; _N_ : サイズ
-memcpy:
-	PUSH_REG 1,1,0,0,0
-
-	ldy #0
-	ldx _N_
-	-	lda (_SRCA_), y
-		sta (_ADDR_), y
-		iny
-		dex
-	bne -
-
-	POP_REG 1,1,0,0,0
-	rts
-
-; _ADDR_ : 対象アドレス
-; _SRCA_ : ソースアドレス
-; _N_ : サイズ (16バイト単位) (max : 16)
-memcpy16:
-	PUSH_REG 1,1,0,0,0
-	
-	ldx _N_
-	ldy #0
-	-
-		rept 16
-			lda (_SRCA_), y
-			sta (_ADDR_), y
-			iny
-		endr
-
-		dex
-	bne -
-
-	POP_REG 1,1,0,0,0
-	rts
-
-; _ADDR_ : 対象
-; _N_ : 足す数
-add_16_ADDR:
-	lda _ADDR_
-	clc
-	adc _N_
-	sta _ADDR_
-	bcc +
-		inc _ADDR_+1
-	+
-	rts
-
-; _ADDR_ : 
-; _N_ : 足す数
-add_16_SRCA:
-	lda _SRCA_
-	clc
-	adc _N_
-	sta _SRCA_
-	bcc +
-		inc _SRCA_+1
-	+
-	rts
-
-DrawScrollZero:
-	lda #0 ; X座標
-	sta #$2005
-	lda #0 ; Y座標
-	sta #$2005
-	rts
 ;******************************************************************************
 ; _ADDR_ : 対象バッファ
 ; _SRCA_ : ソースメモリ
@@ -1690,9 +1263,9 @@ DATA_ASMSTR:
 	.db $e2,$54,$58,$53,$e2,$54,$41,$58,$e2,$54,$41,$59,$e2,$54,$53,$58,$e3,$50,$48,$41,$e3,$50,$48,$50,$e4,$50,$4c,$41,$e4,$50,$4c,$50
 	.db $26,$41,$4e,$44,$7c,$4f,$52,$41,$5e,$45,$4f,$52,$2b,$41,$44,$43,$2d,$53,$42,$43,$e5,$41,$53,$4c,$e6,$4c,$53,$52,$e7,$52,$4f,$4c
 	.db $e8,$52,$4f,$52,$e9,$49,$4e,$43,$e9,$49,$4e,$58,$e9,$49,$4e,$59,$ea,$44,$45,$43,$ea,$44,$45,$58,$ea,$44,$45,$59,$ec,$43,$4d,$50
-	.db $ec,$43,$50,$58,$ec,$43,$50,$59,$eb,$42,$49,$54,$ed,$4a,$4d,$50,$ee,$4a,$53,$52,$ef,$52,$54,$53,$11,$42,$52,$4b,$1b,$52,$54,$49
-	.db $f0,$42,$4e,$45,$3d,$42,$45,$51,$f1,$42,$50,$4c,$3c,$42,$4d,$49,$f3,$42,$43,$43,$f2,$42,$43,$53,$f5,$42,$56,$43,$f4,$42,$56,$53
-	.db $f7,$43,$4c,$49,$f6,$53,$45,$49,$f9,$43,$4c,$44,$f8,$53,$45,$44,$fb,$43,$4c,$43,$fa,$53,$45,$43,$fc,$43,$4c,$56,$00,$4e,$4f,$50
+	.db $ec,$43,$50,$58,$ec,$43,$50,$59,$eb,$42,$49,$54,$ed,$4a,$4d,$50,$ee,$4a,$53,$52,$11,$52,$54,$53,$ef,$42,$52,$4b,$11,$52,$54,$49
+	.db $3d,$42,$45,$51,$f0,$42,$4e,$45,$3c,$42,$4d,$49,$f1,$42,$50,$4c,$f2,$42,$43,$53,$f3,$42,$43,$43,$f4,$42,$56,$53,$f5,$42,$56,$43
+	.db $f6,$53,$45,$49,$f7,$43,$4c,$49,$f8,$53,$45,$44,$f9,$43,$4c,$44,$fa,$53,$45,$43,$fb,$43,$4c,$43,$fc,$43,$4c,$56,$00,$4e,$4f,$50
 	.db $3f,$3f,$3f,$3f,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
 
 DATA_DISASMADRESSING:
@@ -1750,104 +1323,6 @@ DATA_ASM2ADRESSING:
 	.db %00000001, %00000001, %00000001, %00000001 ; CLI,SEI,CLD,SED
 	.db %00000001, %00000001, %00000001, %00000001 ; CLC,SEC,CLV,NOP
 	.db %00000001                                  ; ???
-
-;*****************************************************************************;
-; _ADDR_ : NAMETABLE
-; 備考 : MEM_BG0 から 256 バイト書き込む
-Draw8Lines:
-if 0
-	; バランス ver
-	PUSH_REG 1,1,0,0,0
-
-	lda _ADDR_+1
-	sta #$2006
-	lda _ADDR_
-	sta #$2006
-
-	ldx #15
-	-
-		ldy DATA_Draw8Lines_table, x ; MEM_BG の インデックス
-		i=0
-	    REPT 16
-			lda MEM_BG0+i, y
-			sta #$2007
-			i=i+1
-	    ENDR
-		dex
-	bpl -
-
-	POP_REG 1,1,0,0,0
-	rts
-
-	DATA_Draw8Lines_table:
-		.db 240,224,208,192,176,160,144,128,112,96,80,64,48,32,16,0
-else
-	; 最大速度ver
-	lda _ADDR_+1
-	sta #$2006
-	lda _ADDR_
-	sta #$2006
-
-	i=0
-	REPT 256
-		lda MEM_BG0+i	; 4 clock
-		sta #$2007		; 4 clock
-		i=i+1
-	ENDR
-	rts
-endif
-
-; _ADDR_ : NameTable
-; _SRCA_ : MEM_BG
-; _N_    : 16ブロック単位 (最大:約6行)
-DrawXLines:
-	PUSH_REG 1,1,0,0,0
-
-	lda _ADDR_+1
-	sta #$2006
-	lda _ADDR_
-	sta #$2006
-	ldx _N_
-	ldy #0 ; MEM_BG の インデックス
-	-
-	    REPT 32
-			lda (_SRCA_), y
-			sta #$2007
-			iny
-	    ENDR
-		dex
-		beq +
-	jmp -
-	+
-
-	POP_REG 1,1,0,0,0
-	rts
-
-; _N_ : spr id
-Draw1Sprite:
-	PUSH_REG 0,1,0,0,0
-
-	lda _N_
-	sta $2003
-	ASL_n 2
-	tay ; インデックスを計算
-
-	lda MEM_SP0, y ; Y座標
-	sta $2004
-	lda MEM_SP0+1, y ; キャラ番号
-	sta $2004
-	lda MEM_SP0+2, y ; 反転・優先順位
-	sta $2004
-	lda MEM_SP0+3, y ; X座標
-	sta $2004
-
-	POP_REG 0,1,0,0,0
-	rts
-
-DrawAllSprites:
-	lda #>MEM_SP0
-	sta $4014
-	rts
 
 ;*****************************************************************************;
 ; https://www.wizforest.com/tech/Z80vs6502/;p1#LoopAdd
@@ -1959,7 +1434,13 @@ BREAK:
 	lda _reg_a
 	rti
 
-;*****************************************************************************;
+EndDebug:
+	;
+	; SelectRoutine まで戻る
+	ldx _reg_s_exec
+	txs
+	rts
+
 DrawRegisters:
 	;
 	; 枠組み描画
@@ -2038,7 +1519,8 @@ DrawRegisters:
 	tax
 	lda DATA_YCursor, x
 	sta MEM_SP0+0
-
+	;
+	; 一時的にスプライトを変更
 	lda #$D9 ; →
 	sta MEM_SP0+1
 	;
@@ -2051,17 +1533,32 @@ DrawRegisters:
 	WAIT_VBLANK
 	SET_N #$0
 	jsr Draw1Sprite
+
 	;
-	; メモリページ描画 (前回からページが変わっている場合)
+	; メモリページ描画
+	; (disasm のため _curaddr を操作)
+	lda _curaddr
+	pha
+	lda _curaddr+1
+	pha
 	lda _reg_pc
-	and #%11000000 ; $40 単位でページ変化を確認
-	cmp _reg_pc_last_40
-	beq +
-		sta _SRCA_
-		lda _reg_pc1
-		sta _SRCA_+1
-		jsr Draw_MemoryViewer
-	+
+	sta _curaddr
+	and #%11000000
+	sta _SRCA_
+	lda _reg_pc1
+	sta _curaddr+1
+	sta _SRCA_+1
+	jsr Draw_MemoryViewer
+	;
+	; 元に戻していく
+	pla
+	sta _curaddr+1
+	pla
+	sta _curaddr
+
+	lda #$09 	; '|' に戻す
+	sta MEM_SP0+1
+
 	rts
 
 DATA_StatusBitColor:
@@ -2076,10 +1573,3 @@ DATA_XCursor: ; PC レジスタ矢印のオフセット(X)
 	.db 40, 64, 88, 112
 DATA_YCursor: ; PC レジスタ矢印のオフセット(Y)
 	.db 31, 39, 47, 55, 63, 71, 79, 87, 95, 103, 111, 119, 127, 135, 143, 151
-
-EndDebug:
-	;
-	; SelectRoutine まで戻る
-	ldx #$FD
-	txs
-	rts
