@@ -975,44 +975,47 @@ DrawInitialize:
 	;
 	; 事前描画 (タイトル)
 	SET_ARGS MEM_BG0, DATA_TITLE+1, DATA_TITLE
+	asl _N_
 	jsr memcpy16
 
 	SET_ARGS MEM_BG1, DATA_Register+1, DATA_Register
+	asl _N_
 	jsr memcpy16
 	
 	SET_ARGS MEM_BG7, DATA_HELP+1, DATA_HELP
+	asl _N_
 	jsr memcpy16
 	;
 	; 描画
 	SET_ARGS $2040, MEM_BG0, DATA_TITLE
 	WAIT_VBLANK
-	jsr Draw16XTiles
+	jsr DrawXLines
 	jsr DrawScrollZero
 
 	SET_ARGS $2280, MEM_BG1, DATA_Register
 	WAIT_VBLANK
-	jsr Draw16XTiles
+	jsr DrawXLines
 	jsr DrawScrollZero
 
 	SET_ARGS $2340, MEM_BG7, DATA_HELP
 	WAIT_VBLANK
-	jsr Draw16XTiles
+	jsr DrawXLines
 	jsr DrawScrollZero
 	;
 	; メモリの後始末
-	SET_ARGS MEM_BG0, #0, #0 ; SRCA はアドレスではなく、値として使用. memset の N は 0 指定で 256 扱い.
-	jsr memset
-	SET_ARGS MEM_BG8, #0, #0
-	jsr memset
+;	SET_ARGS MEM_BG0, #0, #0 ; SRCA はアドレスではなく、値として使用. memset の N は 0 指定で 256 扱い.
+;	jsr memset
+;	SET_ARGS MEM_BG8, #0, #0
+;	jsr memset
 
 	rts
 
 DATA_TITLE:
-	.db (1) *2 ; memcpy16 に渡す値 (行数)*2
+	.db 1	; 行数 (DrawXLines で使用. memcpy16 に渡す際は *2 すること！)
 	.!hira "010101010202020303　　ふぁみめむ80えでぃた　　030302020201010101"
 
 DATA_Register: ; 横幅 19
-	.db (6) *2 ; memcpy16 に渡す値 (行数)*2
+	.db 6	; 行数 (DrawXLines で使用. memcpy16 に渡す際は *2 すること！)
 	.db $1c,$cc,$98,$99,$9f,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$1d,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
 	.db $1a,$41,$3a,$2d,$2d,$00,$ff,$3a,$2d,$2d,$2d,$2d,$00,$00,$00,$00,$00,$00,$1a,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
 	.db $1a,$58,$3a,$2d,$2d,$00,$00,$00,$4e,$56,$52,$42,$44,$49,$5a,$43,$00,$00,$1a,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
@@ -1021,7 +1024,7 @@ DATA_Register: ; 横幅 19
 	.db $1e,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$1f,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
 
 DATA_HELP
-	.db (4) *2 ; memcpy16 に渡す値 (行数)*2
+	.db 4	; 行数 (DrawXLines で使用. memcpy16 に渡す際は *2 すること！)
 	;.!hira "Ａ＋じゅうじ：かーそるいどう　　Ｂ＋じゅうじ：あどれすへんこう　"
 	.db $d4,$2b,$d8,$d9,$da,$db,$3a,$8b,$2d,$9d,$cb,$84,$a9,$86,$00,$00,$d7,$2b,$da,$db,$3a,$af,$d3,$84,$97,$a6,$84,$26,$93,$b4,$2d,$00
 	.db $d5,$2b,$d8,$d9,$00,$00,$3a,$ba,$2d,$98,$84,$a9,$86,$00,$00,$00,$d7,$2b,$d9,$00,$3a,$ba,$2d,$99,$a8,$00,$00,$00,$00,$00,$00,$00
@@ -1797,7 +1800,7 @@ endif
 ; _ADDR_ : NameTable
 ; _SRCA_ : MEM_BG
 ; _N_    : 16ブロック単位 (最大:約6行)
-Draw16XTiles:
+DrawXLines:
 	PUSH_REG 1,1,0,0,0
 
 	lda _ADDR_+1
@@ -1807,13 +1810,15 @@ Draw16XTiles:
 	ldx _N_
 	ldy #0 ; MEM_BG の インデックス
 	-
-	    REPT 16
+	    REPT 32
 			lda (_SRCA_), y
 			sta #$2007
 			iny
 	    ENDR
 		dex
-	bne -
+		beq +
+	jmp -
+	+
 
 	POP_REG 1,1,0,0,0
 	rts
@@ -1959,6 +1964,7 @@ DrawRegisters:
 	;
 	; 枠組み描画
 	SET_ARGS MEM_BG0, DATA_Register+1, DATA_Register
+	asl _N_
 	jsr memcpy16
 	;
 	; A レジスタ
@@ -2040,7 +2046,7 @@ DrawRegisters:
 	SET_ARGS NAMETABLE20, MEM_BG0, DATA_Register
 	WAIT_VBLANK
 	WAIT_VBLANK
-	jsr Draw16XTiles
+	jsr DrawXLines
 	jsr DrawScrollZero
 	WAIT_VBLANK
 	SET_N #$0
