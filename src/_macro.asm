@@ -188,6 +188,16 @@ macro SET_N N
 	lda N
 	sta _N_
 endm
+macro SET_M MM
+	lda MM
+	sta _MM_
+endm
+macro SET_MM MM
+	lda #<(MM)
+	sta _MM_
+	lda #>(MM)
+	sta _MM_+1
+endm
 macro SET_MMPTR MM
 	lda MM
 	sta _MM_

@@ -256,3 +256,30 @@ DrawScrollZero:
 	lda #0 ; Y座標
 	sta #$2005
 	rts
+
+;
+; _ADDR_ : MEM_BG の始点
+; _SRCA_ : コピー元アドレス
+; _N_ : 縦幅
+; _MM_ ; 横幅
+BufCopyBlock:
+	PUSH_REG 1,1,1,1,0
+
+	ldx _N_
+	dex
+	-
+		ldy _MM_
+		dey
+		--
+			lda (_SRCA_), y
+			sta (_ADDR_), y
+			dey
+		bpl --
+
+		ADD_16 _ADDR_, #32
+		ADD_16 _SRCA_, _MM_
+	dex
+	bpl -
+
+	POP_REG 1,1,1,1,0
+	rts

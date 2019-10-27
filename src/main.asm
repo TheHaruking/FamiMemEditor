@@ -41,8 +41,13 @@
 
 	; Asm 関連
 	_is_AsmEdit = $C0
-	_asm_x = $C1	; 6
-	_asm_y = $C2	; 13
+	_asm_id 	= $C1
+	_asm_x 		= $C2	; 6
+	_asm_y 		= $C3	; 13
+	_asm_adr_y 	= $C4
+	_asm_adr_ptr = $C5
+	_asm_adr_ptr1 = $C6
+	
 	; $F0-$FF : 汎用
 
 ; $0200-$4FF
@@ -601,7 +606,6 @@ nonefunc:
 	rts
 ;******************************************************************************
 AsmEdit:
-
 	SET_ARGS MEM_BG0, DATA_ASMEDIT_INIT, #16
 	jsr memcpy16
 	SET_ARGS MEM_BG8, DATA_ASMEDIT_INIT+256, #14
@@ -611,7 +615,6 @@ AsmEdit:
 	WAIT_VBLANK
 	jsr Draw8Lines
 	jsr DrawScrollZero
-
 	;
 	; 一時的にスプライトを変更
 	lda #$D9 ; →
@@ -628,7 +631,7 @@ AsmEdit:
 
 	;
 	; AsmEdit ループ
-	--
+	-
 		jsr GetJoyPad
 		jsr Get8Direction
 
@@ -637,15 +640,18 @@ AsmEdit:
 		jsr AsmEditDraw
 
 		lda _is_AsmEdit
-		beq +
-	jmp --
-	+
+		cmp #2
+		bne +
+			jmp AsmEdit
+		+
+		lda _is_AsmEdit
+	bne -
 	;
 	; スプライトを戻す
 	lda #$09 ; →
 	sta MEM_SP0+1
 	rts
-DATA_ASMEDIT_INIT:
+DATA_ASMEDIT_INIT: ; 15
 	.db $1c,$19,$19,$19,$19,$19,$19,$19,$19,$19,$15,$19,$19,$19,$19,$19,$19,$19,$19,$19,$15,$19,$19,$19,$19,$19,$19,$19,$19,$19,$1d,$00
 	.db $1a,$e0,$4c,$44,$41,$00,$e1,$53,$54,$41,$1a,$26,$41,$4e,$44,$00,$7c,$4f,$52,$41,$1a,$ed,$4a,$4d,$50,$00,$00,$00,$00,$00,$1a,$00
 	.db $1a,$e0,$4c,$44,$58,$00,$e1,$53,$54,$58,$1a,$5e,$45,$4f,$52,$00,$00,$00,$00,$00,$1a,$ee,$4a,$53,$52,$00,$ef,$52,$54,$53,$1a,$00
@@ -663,6 +669,15 @@ DATA_ASMEDIT_INIT:
 	.db $1e,$19,$19,$19,$19,$19,$19,$19,$19,$19,$14,$19,$19,$19,$19,$19,$19,$19,$19,$19,$14,$19,$19,$19,$19,$19,$19,$19,$19,$19,$1f,$00
 
 AsmEditEngine:
+	;
+	; キャンセル
+	lda _pad1+1
+	and #pad_B
+	beq +
+		lda #0
+		sta _is_AsmEdit
+	+
+
 	lda _pad1+1
 	and #pad_Down
 	beq +
@@ -714,16 +729,21 @@ AsmEditEngine:
 	lda _pad1+1
 	and #pad_A
 	beq +
+		;
+		; _asm_x * 13
 		lda _asm_x
-		ASL_n 4
-		sec
-		sbc _asm_x
-		sbc _asm_x
-		sbc _asm_x
+		tax
+		lda DATA_Mulx13_Tbl, x
 		clc
 		adc _asm_y
 		tax
 		lda DATA_ASMEDIT_LIST, x
+		sta _asm_id
+		;
+		; ???? の場合 スキップ
+		cmp #ID____
+		beq +
+
 		tax
 		lda DATA_ASM2ADRESSING, x
 		cmp #%00000001
@@ -735,16 +755,18 @@ AsmEditEngine:
 			sta _is_AsmEdit
 			jmp +++
 		++
-			nop
+			jsr AsmEditAdressing
+			lda _is_AsmEdit
+			cmp #0
+			bne ++++
+				lda #0
+				sta _is_AsmEdit
+				jmp +++++
+			++++
+				lda #2
+				sta _is_AsmEdit
+			+++++
 		+++
-	+
-	;
-	; キャンセル
-	lda _pad1+1
-	and #pad_B
-	beq +
-		lda #0
-		sta _is_AsmEdit
 	+
 	rts
 
@@ -772,13 +794,17 @@ AsmEditDraw:
 	jsr Draw1Sprite
 	rts
 
-DATA_ASMEDIT_LIST:
+DATA_ASMEDIT_LIST: ; 13 * 6
 	.db ID_LDA, ID_LDX, ID_LDY, ID____, ID_TXA, ID_TYA, ID_TXS, ID____, ID_PHA, ID_PHP, ID____, ID_NOP, ID____
 	.db ID_STA, ID_STX, ID_STY, ID____, ID_TAX, ID_TAY, ID_TSX, ID____, ID_PLA, ID_PLP, ID____, ID____, ID____
 	.db ID_AND, ID_EOR, ID_ADC, ID____, ID_ASL, ID_ROL, ID____, ID_INC, ID_INX, ID_INY, ID____, ID_CMP, ID_BIT
 	.db ID_ORA, ID____, ID_SBC, ID____, ID_LSR, ID_ROR, ID____, ID_DEC, ID_DEX, ID_DEY, ID____, ID_CPX, ID_CPY
 	.db ID_JMP, ID_JSR, ID_BRK, ID____, ID_BEQ, ID_BMI, ID_BCS, ID_BVS, ID____, ID_SEI, ID_SED, ID_SEC, ID____
 	.db ID____, ID_RTS, ID_RTI, ID____, ID_BNE, ID_BPL, ID_BCC, ID_BVC, ID____, ID_CLI, ID_CLD, ID_CLC, ID_CLV
+DATA_ASMEDIT_LIST_tbl:
+	.dw DATA_ASMEDIT_LIST, DATA_ASMEDIT_LIST+13, DATA_ASMEDIT_LIST+26, DATA_ASMEDIT_LIST+39, DATA_ASMEDIT_LIST+52, DATA_ASMEDIT_LIST+65
+DATA_Mulx13_Tbl: ; perl -e 'for(0..5){ print $_*13, ", ";}'
+	.db 0, 13, 26, 39, 52, 65
 
 DATA_ASM2ADRESSING:
 	; 0:      
@@ -829,17 +855,196 @@ DATA_ASMID2CODE_and_TBL:
 	.db $38, $18, $B8, $EA
 	.db $00
 
-DATA_ASMADRESSINGID2CODE:
-	.db $A9, $A5, $AD, $B5, 0, $BD, $B9, $A1, $B1 ; LDA
-	.db 0, 0, 0, 0, 0, 0, 0, 0, 0 ; LDX
-	.db 0, 0, 0, 0, 0, 0, 0, 0, 0 ; LDY
-	.db 0, 0, 0, 0, 0, 0, 0, 0, 0  ; STA
-	.db 0, 0, 0, 0, 0, 0, 0, 0, 0  ; STX
-	.db 0, 0, 0, 0, 0, 0, 0, 0, 0  ; STY
-	.db 0, 0, 0, 0, 0, 0, 0, 0, 0  ; AND
-	.db 0, 0, 0, 0, 0, 0, 0, 0, 0  ; ORA
-	.db 0, 0, 0, 0, 0, 0, 0, 0, 0  ; EOR
-	.db 0, 0, 0, 0, 0, 0, 0, 0, 0  ; 
+DATA_ASMADRESSINGID2CODE: ; 22行
+	;         #    0    $   0,x  0,y  $,x  $,y  (0x) (0)y  ($)
+	.db   0, $A9, $A5, $AD, $B5,   0, $BD, $B9, $A1, $B1,   0 ; LDA
+	.db   0, $A2, $A6, $AE,   0, $B6,   0, $BE,   0,   0,   0 ; LDX
+	.db   0, $A0, $A4, $AC, $B4,   0, $BC,   0,   0,   0,   0 ; LDY
+	.db   0,   0, $85, $8D, $95,   0, $9D, $99, $81, $91,   0 ; STA
+	.db   0,   0, $86, $8E,   0, $96,   0,   0,   0,   0,   0 ; STX
+	.db   0,   0, $84, $8C, $94,   0,   0,   0,   0,   0,   0 ; STY
+	.db   0, $29, $25, $2D, $35,   0, $3D, $39, $21, $31,   0 ; AND
+	.db   0, $09, $05, $0D, $15,   0, $1D, $19, $01, $11,   0 ; ORA
+	.db   0, $49, $45, $4D, $55,   0, $5D, $59, $41, $51,   0 ; EOR
+	.db   0, $69, $65, $6D, $75,   0, $7D, $79, $61, $71,   0 ; ADC
+	.db   0, $E9, $E5, $ED, $F5,   0, $FD, $F9, $E1, $F1,   0 ; SBC
+	.db $0A,   0, $06, $0E, $16,   0, $1E,   0,   0,   0,   0 ; ASL
+	.db $4A,   0, $46, $4E, $56,   0, $5E,   0,   0,   0,   0 ; LSR
+	.db $2A,   0, $26, $2E, $36,   0, $3E,   0,   0,   0,   0 ; ROL
+	.db $6A,   0, $66, $6E, $76,   0, $7E,   0,   0,   0,   0 ; ROR
+	.db   0,   0, $E6, $EE, $F6,   0, $FE,   0,   0,   0,   0 ; INC
+	.db   0,   0, $C6, $CE, $D6,   0, $DE,   0,   0,   0,   0 ; DEC
+	.db   0, $C9, $C5, $CD, $D5,   0, $DD, $D9, $C1, $D1,   0 ; CMP
+	.db   0, $E0, $E4, $EC,   0,   0,   0,   0,   0,   0,   0 ; CPX
+	.db   0, $C0, $C4, $CC,   0,   0,   0,   0,   0,   0,   0 ; CPY
+	.db   0,   0, $24, $2C,   0,   0,   0,   0,   0,   0,   0 ; BIT
+	.db   0,   0,   0, $4C,   0,   0,   0,   0,   0,   0, $6C ; JMP
+DATA_ASMADRESSINGID2CODE_tbl:
+	.dw DATA_ASMADRESSINGID2CODE,    DATA_ASMADRESSINGID2CODE+11, DATA_ASMADRESSINGID2CODE+22, DATA_ASMADRESSINGID2CODE+33
+	.dw DATA_ASMADRESSINGID2CODE+44, DATA_ASMADRESSINGID2CODE+55, DATA_ASMADRESSINGID2CODE+66, DATA_ASMADRESSINGID2CODE+77
+	.dw DATA_ASMADRESSINGID2CODE+88, DATA_ASMADRESSINGID2CODE+99, DATA_ASMADRESSINGID2CODE+110, DATA_ASMADRESSINGID2CODE+121
+	.dw DATA_ASMADRESSINGID2CODE+132, DATA_ASMADRESSINGID2CODE+143, DATA_ASMADRESSINGID2CODE+154, DATA_ASMADRESSINGID2CODE+165
+	.dw DATA_ASMADRESSINGID2CODE+176, DATA_ASMADRESSINGID2CODE+187, DATA_ASMADRESSINGID2CODE+198, DATA_ASMADRESSINGID2CODE+209
+	.dw DATA_ASMADRESSINGID2CODE+220, DATA_ASMADRESSINGID2CODE+231
+	
+DATA_Mulx11_Tbl:
+	.db 0, 11, 22, 33, 44, 55, 66, 77, 88, 99, 110, 121, 132, 143, 154, 165, 176, 187, 198, 209, 220, 231
+;
+; _is_AsmEdit : 完了時 : 0, キャンセル時 : 1
+AsmEditAdressing:
+	lda #2
+	sta _is_AsmEdit
+
+	;
+	; 配列のアドレスを保存
+	lda _asm_id
+	tax
+	lda DATA_ASMID2CODE_and_TBL, x
+	ASL_n 1
+	tax
+	lda DATA_ASMADRESSINGID2CODE_tbl, x
+	sta _asm_adr_ptr
+	lda DATA_ASMADRESSINGID2CODE_tbl+1, x
+	sta _asm_adr_ptr+1
+
+	;
+	; 画面初期化
+	SET_ARGS MEM_BG0, DATA_ASMEDIT_INIT, #16
+	jsr memcpy16
+
+	SET_ARGS MEM_BG1+8, DATA_ASMEDIT_ADRESSING_INIT, #13
+	SET_M #15
+	jsr BufCopyBlock
+
+	;
+	; 対応する Adressing のみ ニーモニックを表示
+	SET_SRCA DATA_ASMSTR
+	lda _asm_id
+	ASL_n 2
+	sta _N_
+	jsr add_16_SRCA
+	SET_ADDR MEM_BG2+10
+	SET_N #4
+
+	ldy #0
+	ldx #0
+	-
+		lda (_asm_adr_ptr), y
+		beq +
+			SET_N #4
+			jsr memcpy
+			jmp ++
+		+
+			PUSH_REG 0,0,0,1,0
+			SET_SRCA DATA_ASMADRESSINGBLANK
+			SET_N #12
+			jsr memcpy			
+			POP_REG 0,0,0,1,0
+		++
+		SET_N #32
+		jsr add_16_ADDR
+		iny
+		cpy #11
+	bmi -
+
+	SET_ADDR NAMETABLE04
+	WAIT_VBLANK
+	jsr Draw8Lines
+	jsr DrawScrollZero
+
+	SET_ARGS MEM_BG0, MEM_BG8, #16
+	jsr memcpy16
+
+	SET_ADDR NAMETABLE12
+	WAIT_VBLANK
+	jsr Draw8Lines
+	jsr DrawScrollZero
+	-
+		jsr GetJoyPad
+		jsr Get8Direction
+
+		jsr AsmEditAdressingEngine
+		jsr AsmEditDraw
+
+		lda _is_AsmEdit
+		cmp #2
+	beq -
+	rts
+
+DATA_ASMEDIT_ADRESSING_INIT: ; 15x13
+	.db $1c,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$1d
+	.db $1a,$00,$00,$00,$00,$00,$00,$2D,$00,$00,$00,$00,$00,$00,$1a
+	.db $1a,$00,$00,$00,$00,$00,$00,$23,$24,$30,$30,$00,$00,$00,$1a
+	.db $1a,$00,$00,$00,$00,$00,$00,$24,$30,$30,$00,$00,$00,$00,$1a
+	.db $1a,$00,$00,$00,$00,$00,$00,$24,$30,$30,$30,$30,$00,$00,$1a
+	.db $1a,$00,$00,$00,$00,$00,$00,$24,$30,$30,$2c,$58,$00,$00,$1a
+	.db $1a,$00,$00,$00,$00,$00,$00,$24,$30,$30,$2c,$59,$00,$00,$1a
+	.db $1a,$00,$00,$00,$00,$00,$00,$24,$30,$30,$30,$30,$2c,$58,$1a
+	.db $1a,$00,$00,$00,$00,$00,$00,$24,$30,$30,$30,$30,$2c,$59,$1a
+	.db $1a,$00,$00,$00,$00,$00,$00,$28,$24,$30,$30,$2c,$58,$29,$1a
+	.db $1a,$00,$00,$00,$00,$00,$00,$28,$24,$30,$30,$29,$2c,$59,$1a
+	.db $1a,$00,$00,$00,$00,$00,$00,$28,$24,$30,$30,$30,$30,$29,$1a
+	.db $1e,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$19,$1f
+DATA_ASMADRESSINGBLANK:
+	.db "----        " ; 12
+DATA_ASMADRESSING_Cursor_y: ; perl -e 'for(0..11){ print $_*8+47, ", "}'
+	.db 47, 55, 63, 71, 79, 87, 95, 103, 111, 119, 127, 135
+
+AsmEditAdressingEngine:
+	lda _pad1+1
+	and #pad_B
+	beq +
+		lda #1 ; キャンセル時は 1
+		sta _is_AsmEdit
+	+
+	;
+	;
+	lda _pad1+1
+	and #pad_Down
+	beq +
+		inc _asm_adr_y
+	+
+	lda _pad1+1
+	and #pad_Up
+	beq +
+		dec _asm_adr_y
+	+
+	;
+	; 正規化
+	lda _asm_adr_y
+	cmp #0
+	bpl +
+		lda #10
+	+
+	cmp #11
+	bmi +
+		lda #0
+	+
+	sta _asm_adr_y
+	;
+	; A
+	lda _pad1+1
+	and #pad_A
+	beq +
+		ldy _asm_adr_y
+		lda (_asm_adr_ptr), y
+		beq ++
+			ldy #0
+			sta (_curaddr), y
+			lda #0
+			sta _is_AsmEdit
+		++
+	+
+	;
+	; カーソル
+	lda #72
+	sta MEM_SP0+3
+
+	lda _asm_adr_y
+	tax
+	lda DATA_ASMADRESSING_Cursor_y, x
+	sta MEM_SP0+0
+	rts
 
 ;******************************************************************************
 CalcCursor:
@@ -1539,8 +1744,8 @@ DATA_BIN2ASMID:
 
 	.db $21,$1F,$38,$38, $21,$1F,$1C,$38, $1B,$1F,$1D,$38, $21,$1F,$1C,$38
 	.db $29,$1F,$38,$38, $38,$1F,$1C,$38, $33,$1F,$38,$38, $38,$1F,$1C,$38
-	.db $20,$14,$38,$38, $20,$14,$1A,$38, $1A,$14,$37,$38, $20,$14,$1A,$38
-	.db $28,$14,$38,$38, $38,$14,$1A,$38, $32,$14,$38,$38, $38,$14,$1A,$38
+	.db $20,$14,$38,$38, $20,$14,$19,$38, $1A,$14,$37,$38, $20,$14,$19,$38
+	.db $28,$14,$38,$38, $38,$14,$19,$38, $32,$14,$38,$38, $38,$14,$19,$38
 
 DATA_ASMSTR:
 	;     0   1   2   3   4   5   6   7   8   9   A   B   C   D   E   F 
