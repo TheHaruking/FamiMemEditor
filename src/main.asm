@@ -41,7 +41,8 @@
 
 	; Asm 関連
 	_is_AsmEdit = $C0
-
+	_asm_x = $C1	; 6
+	_asm_y = $C2	; 13
 	; $F0-$FF : 汎用
 
 ; $0200-$4FF
@@ -57,6 +58,69 @@
 ; 座標計算
 	Y_OFS		EQU $20 ; 上4行空けてカーソルを表示する際のオフセット値
 	X_OFS		EQU $2F ; "0000:" の分 - 文字との右間隔 を空けてカーソルを表示する際のオフセット値
+; ASMID
+	;     0   1   2   3   4   5   6   7   8   9   A   B   C   D   E   F 
+	; 00:LDA,LDX,LDY,STA,STX,STY,TXA,TYA,TXS,TAX,TAY,TSX,PHA,PHP,PLA,PLP
+	; 10:AND,ORA,EOR,ADC,SBC,ASL,LSR,ROL,ROR,INC,INX,INY,DEC,DEX,DEY,CMP
+	; 20:CPX,CPY,BIT,JMP,JSR,RTS,BRK,RTI,BNE,BEQ,BPL,BMI,BCC,BCS,BVC,BVS
+	; 30:CLI,SEI,CLD,SED,CLC,SEC,CLV,NOP,???
+	ID_LDA	EQU 0
+	ID_LDX	EQU 1
+	ID_LDY	EQU 2
+	ID_STA	EQU 3
+	ID_STX	EQU 4
+	ID_STY	EQU 5
+	ID_TXA	EQU 6
+	ID_TYA	EQU 7
+	ID_TXS	EQU 8
+	ID_TAX	EQU 9
+	ID_TAY	EQU 10
+	ID_TSX	EQU 11
+	ID_PHA	EQU 12
+	ID_PHP	EQU 13
+	ID_PLA	EQU 14
+	ID_PLP	EQU 15
+	ID_AND	EQU 16
+	ID_ORA	EQU 17
+	ID_EOR	EQU 18
+	ID_ADC	EQU 19
+	ID_SBC	EQU 20
+	ID_ASL	EQU 21
+	ID_LSR	EQU 22
+	ID_ROL	EQU 23
+	ID_ROR	EQU 24
+	ID_INC	EQU 25
+	ID_INX	EQU 26
+	ID_INY	EQU 27
+	ID_DEC	EQU 28
+	ID_DEX	EQU 29
+	ID_DEY	EQU 30
+	ID_CMP	EQU 31
+	ID_CPX	EQU 32
+	ID_CPY	EQU 33
+	ID_BIT	EQU 34
+	ID_JMP	EQU 35
+	ID_JSR	EQU 36
+	ID_RTS	EQU 37
+	ID_BRK	EQU 38
+	ID_RTI	EQU 39
+	ID_BEQ 	EQU 40
+	ID_BNE	EQU 41
+	ID_BMI	EQU 42
+	ID_BPL	EQU 43
+	ID_BCS	EQU 44
+	ID_BCC	EQU 45
+	ID_BVS	EQU 46
+	ID_BVC	EQU 47
+	ID_SEI	EQU 48
+	ID_CLI	EQU 49
+	ID_SED	EQU 50
+	ID_CLD	EQU 51
+	ID_SEC	EQU 52
+	ID_CLC	EQU 53
+	ID_CLV	EQU 54
+	ID_NOP	EQU 55
+	ID____	EQU 56
 
 ;*****************************************************************************
 ; 電源投入後最初に実行
@@ -178,11 +242,8 @@ SelectRoutine:
 		sta _padMode
 	++
 	;
-	; padMode + AsmModeに応じて分岐
-	lda _is_AsmEdit
-	ASL_n 3
-	clc
-	adc _padMode
+	; padMode に応じて分岐
+	lda _padMode
 	ASL_n 1 ; dw 配列を読むので 2 倍しておく
 	tax
 	lda DATA_SelectRoutine_func, x
@@ -197,17 +258,6 @@ DATA_SelectRoutine_func:
 	.dw Exec			; select
 	.dw OtherFunc		; start
 	.dw EditHex			; 十時キー
-	.dw nonefunc		; -
-	.dw nonefunc		; -
-
-	.dw AsmNonefunc
-	.dw AsmNonefunc
-	.dw AsmNonefunc
-	.dw AsmNonefunc
-	.dw AsmNonefunc
-	.dw AsmNonefunc
-	.dw AsmNonefunc
-	.dw AsmNonefunc
 
 ; A:1, B:2, start:3, select:4, 十字キー:5
 DATA_SelectRoutine
@@ -340,12 +390,13 @@ ChangeBaseAddr:
 		sta _base+1
 	++
 	;
-	; ASM モード 切替
+	; ASM 入力へ移行
 	lda _pad1+1
 	and #pad_Right
 	beq ++
 		lda #1
 		sta _is_AsmEdit
+		jsr AsmEdit
 	++
 	rts
 
@@ -549,9 +600,185 @@ calc_SelectRenge:
 nonefunc:
 	rts
 ;******************************************************************************
-AsmNonefunc:
+AsmEdit:
+
+	SET_ARGS MEM_BG0, DATA_ASMEDIT_INIT, #16
+	jsr memcpy16
+	SET_ARGS MEM_BG8, DATA_ASMEDIT_INIT+256, #14
+	jsr memcpy16
+
+	SET_ADDR NAMETABLE04
+	WAIT_VBLANK
+	jsr Draw8Lines
+	jsr DrawScrollZero
+
+	;
+	; 一時的にスプライトを変更
+	lda #$D9 ; →
+	sta MEM_SP0+1
+
+	jsr AsmEditEngine_CalcCursor
+
+	SET_ARGS MEM_BG0, MEM_BG8, #16
+	jsr memcpy16
+	SET_ADDR NAMETABLE12
+	WAIT_VBLANK
+	jsr Draw8Lines
+	jsr DrawScrollZero
+
+	;
+	; AsmEdit ループ
+	--
+		jsr GetJoyPad
+		jsr Get8Direction
+
+		jsr AsmEditEngine
+
+		jsr AsmEditDraw
+
+		lda _is_AsmEdit
+		beq +
+	jmp --
+	+
+	;
+	; スプライトを戻す
+	lda #$09 ; →
+	sta MEM_SP0+1
+	rts
+DATA_ASMEDIT_INIT:
+	.db $1c,$19,$19,$19,$19,$19,$19,$19,$19,$19,$15,$19,$19,$19,$19,$19,$19,$19,$19,$19,$15,$19,$19,$19,$19,$19,$19,$19,$19,$19,$1d,$00
+	.db $1a,$e0,$4c,$44,$41,$00,$e1,$53,$54,$41,$1a,$26,$41,$4e,$44,$00,$7c,$4f,$52,$41,$1a,$ed,$4a,$4d,$50,$00,$00,$00,$00,$00,$1a,$00
+	.db $1a,$e0,$4c,$44,$58,$00,$e1,$53,$54,$58,$1a,$5e,$45,$4f,$52,$00,$00,$00,$00,$00,$1a,$ee,$4a,$53,$52,$00,$ef,$52,$54,$53,$1a,$00
+	.db $1a,$e0,$4c,$44,$59,$00,$e1,$53,$54,$59,$1a,$2b,$41,$44,$43,$00,$2d,$53,$42,$43,$1a,$fe,$42,$52,$4b,$00,$fd,$52,$54,$49,$1a,$00
+	.db $1a,$00,$00,$00,$00,$00,$00,$00,$00,$00,$1a,$00,$00,$00,$00,$00,$00,$00,$00,$00,$1a,$00,$00,$00,$00,$00,$00,$00,$00,$00,$1a,$00
+	.db $1a,$e2,$54,$58,$41,$00,$e2,$54,$41,$58,$1a,$e5,$41,$53,$4c,$00,$e6,$4c,$53,$52,$1a,$3d,$42,$45,$51,$00,$f0,$42,$4e,$45,$1a,$00
+	.db $1a,$e2,$54,$59,$41,$00,$e2,$54,$41,$59,$1a,$e7,$52,$4f,$4c,$00,$e8,$52,$4f,$52,$1a,$3c,$42,$4d,$49,$00,$f1,$42,$50,$4c,$1a,$00
+	.db $1a,$e2,$54,$58,$53,$00,$e2,$54,$53,$58,$1a,$00,$00,$00,$00,$00,$00,$00,$00,$00,$1a,$f2,$42,$43,$53,$00,$f3,$42,$43,$43,$1a,$00
+	.db $1a,$00,$00,$00,$00,$00,$00,$00,$00,$00,$1a,$e9,$49,$4e,$43,$00,$ea,$44,$45,$43,$1a,$f4,$42,$56,$53,$00,$f5,$42,$56,$43,$1a,$00
+	.db $1a,$e3,$50,$48,$41,$00,$e4,$50,$4c,$41,$1a,$e9,$49,$4e,$58,$00,$ea,$44,$45,$58,$1a,$00,$00,$00,$00,$00,$00,$00,$00,$00,$1a,$00
+	.db $1a,$e3,$50,$48,$50,$00,$e4,$50,$4c,$50,$1a,$e9,$49,$4e,$59,$00,$ea,$44,$45,$59,$1a,$f6,$53,$45,$49,$00,$f7,$43,$4c,$49,$1a,$00
+	.db $16,$19,$19,$19,$19,$19,$19,$19,$19,$19,$18,$00,$00,$00,$00,$00,$00,$00,$00,$00,$1a,$f8,$53,$45,$44,$00,$f9,$43,$4c,$44,$1a,$00
+	.db $1a,$00,$4e,$4f,$50,$00,$00,$00,$00,$00,$1a,$ec,$43,$4d,$50,$00,$ec,$43,$50,$58,$1a,$fa,$53,$45,$43,$00,$fb,$43,$4c,$43,$1a,$00
+	.db $1a,$00,$00,$00,$00,$00,$00,$00,$00,$00,$1a,$eb,$42,$49,$54,$00,$ec,$43,$50,$59,$1a,$00,$00,$00,$00,$00,$fc,$43,$4c,$56,$1a,$00
+	.db $1e,$19,$19,$19,$19,$19,$19,$19,$19,$19,$14,$19,$19,$19,$19,$19,$19,$19,$19,$19,$14,$19,$19,$19,$19,$19,$19,$19,$19,$19,$1f,$00
+
+AsmEditEngine:
+	lda _pad1+1
+	and #pad_Down
+	beq +
+		inc _asm_y
+	+
+	lda _pad1+1
+	and #pad_Up
+	beq +
+		dec _asm_y
+	+
+	lda _pad1+1
+	and #pad_Right
+	beq +
+		inc _asm_x
+	+
+	lda _pad1+1
+	and #pad_Left
+	beq +
+		dec _asm_x
+	+
+	;
+	; 正規化
+	lda _asm_y
+	cmp #0
+	bpl +
+		lda #12
+	+
+	cmp #13
+	bmi +
+		lda #0
+	+
+	sta _asm_y
+
+	lda _asm_x
+	cmp #0
+	bpl +
+		lda #5
+	+
+	cmp #6
+	bmi +
+		lda #0
+	+
+	sta _asm_x
+
+	jsr AsmEditEngine_CalcCursor
+
+	;
+	; キャンセル
+	lda _pad1+1
+	and #pad_B
+	beq +
+		lda #0
+		sta _is_AsmEdit
+	+
 	rts
 
+AsmEditEngine_CalcCursor:
+	;
+	; PC レジスタ (カーソル)
+	lda _asm_x
+	tax
+	lda DATA_AsmEditEngine_CalcCursor_x, x
+	sta MEM_SP0+3
+
+	lda _asm_y
+	tax
+	lda DATA_AsmEditEngine_CalcCursor_y, x
+	sta MEM_SP0+0
+	rts
+DATA_AsmEditEngine_CalcCursor_x:
+	.db 0, 40, 80, 120, 160, 200
+DATA_AsmEditEngine_CalcCursor_y:
+	.db 39, 47, 55, 63, 71, 79, 87, 95, 103, 111, 119, 127, 135
+
+AsmEditDraw:
+	WAIT_VBLANK
+	SET_N #0
+	jsr Draw1Sprite
+	rts
+
+DATA_ASMEDIT_LIST:
+	.db ID_LDA, ID_LDX, ID_LDY, ID____, ID_TXA, ID_TYA, ID_TXS, ID____, ID_PHA, ID_PHP, ID____, ID_NOP, ID____
+	.db ID_STA, ID_STX, ID_STY, ID____, ID_TAX, ID_TAY, ID_TSX, ID____, ID_PLA, ID_PLP, ID____, ID____, ID____
+	.db ID_AND, ID_EOR, ID_ADC, ID____, ID_ASL, ID_ROL, ID____, ID_INC, ID_INX, ID_INY, ID____, ID_CMP, ID_BIT
+	.db ID_ORA, ID____, ID_SBC, ID____, ID_LSR, ID_ROR, ID____, ID_DEC, ID_DEX, ID_DEY, ID____, ID_CPX, ID_CPY
+	.db ID_JMP, ID_JSR, ID_BRK, ID____, ID_BEQ, ID_BMI, ID_BCS, ID_BVS, ID____, ID_SEI, ID_SED, ID_SEC, ID____
+	.db ID____, ID_RTS, ID_RTI, ID____, ID_BNE, ID_BPL, ID_BCC, ID_BVC, ID____, ID_CLI, ID_CLD, ID_CLC, ID_CLV
+
+DATA_ASM2ADRESSING:
+	; 0:      
+	; 1:#00   
+	; 2:00; 0000
+	; 3:00,x  
+	; 4:00,y
+	; 5:0000,x  
+	; 6:0000,y
+	; 7:(00,x); (00),y
+	; ※ JMP:%10000000 と JSR:%00000000 はプログラム中で特別に扱う
+	.db %11101110, %01010110, %00101110, %11101100 ; LDA,LDX,LDY,STA
+	.db %00010100, %00001100, %00000001, %00000001 ; STX,STY,TXA,TYA
+	.db %00000001, %00000001, %00000001, %00000001 ; TXS,TAX,TAY,TSX
+	.db %00000001, %00000001, %00000001, %00000001 ; PHA,PHP,PLA,PLP
+
+	.db %11101110, %11101110, %11101110, %11101110 ; AND,ORA,EOR,ADC
+	.db %11101110, %00011101, %00011101, %00011101 ; SBC,ASL,LSR,ROL
+	.db %00011101, %00011100, %00000001, %00000001 ; ROR,INC,INX,INY
+	.db %00011100, %00000001, %00000001, %11101110 ; DEC,DEX,DEY,CMP
+
+	.db %00000110, %00000110, %00000100, %10000000 ; CPX,CPY,BIT,JMP
+	.db %00000000, %00000001, %00000000, %00000001 ; JSR,RTS,BRK,RTI
+	.db %00000001, %00000001, %00000001, %00000001 ; BNE,BEQ,BPL,BMI
+	.db %00000001, %00000001, %00000001, %00000001 ; BCC,BCS,BVC,BVS
+
+	.db %00000001, %00000001, %00000001, %00000001 ; CLI,SEI,CLD,SED
+	.db %00000001, %00000001, %00000001, %00000001 ; CLC,SEC,CLV,NOP
+	.db %00000001                                  ; ???
 ;******************************************************************************
 CalcCursor:
 	;
@@ -1263,7 +1490,7 @@ DATA_ASMSTR:
 	.db $e2,$54,$58,$53,$e2,$54,$41,$58,$e2,$54,$41,$59,$e2,$54,$53,$58,$e3,$50,$48,$41,$e3,$50,$48,$50,$e4,$50,$4c,$41,$e4,$50,$4c,$50
 	.db $26,$41,$4e,$44,$7c,$4f,$52,$41,$5e,$45,$4f,$52,$2b,$41,$44,$43,$2d,$53,$42,$43,$e5,$41,$53,$4c,$e6,$4c,$53,$52,$e7,$52,$4f,$4c
 	.db $e8,$52,$4f,$52,$e9,$49,$4e,$43,$e9,$49,$4e,$58,$e9,$49,$4e,$59,$ea,$44,$45,$43,$ea,$44,$45,$58,$ea,$44,$45,$59,$ec,$43,$4d,$50
-	.db $ec,$43,$50,$58,$ec,$43,$50,$59,$eb,$42,$49,$54,$ed,$4a,$4d,$50,$ee,$4a,$53,$52,$11,$52,$54,$53,$ef,$42,$52,$4b,$11,$52,$54,$49
+	.db $ec,$43,$50,$58,$ec,$43,$50,$59,$eb,$42,$49,$54,$ed,$4a,$4d,$50,$ee,$4a,$53,$52,$ef,$52,$54,$53,$fe,$42,$52,$4b,$fd,$52,$54,$49
 	.db $3d,$42,$45,$51,$f0,$42,$4e,$45,$3c,$42,$4d,$49,$f1,$42,$50,$4c,$f2,$42,$43,$53,$f3,$42,$43,$43,$f4,$42,$56,$53,$f5,$42,$56,$43
 	.db $f6,$53,$45,$49,$f7,$43,$4c,$49,$f8,$53,$45,$44,$f9,$43,$4c,$44,$fa,$53,$45,$43,$fb,$43,$4c,$43,$fc,$43,$4c,$56,$00,$4e,$4f,$50
 	.db $3f,$3f,$3f,$3f,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
@@ -1294,35 +1521,6 @@ DATA_DISASMADRESSING:
 	.db $01,$09,$0B,$0B, $0B,$04,$04,$0B, $00,$07,$0B,$0B, $0B,$06,$06,$0B
 
 ; Thanks! http://sasq.comyr.com/Stuff/Elektronika/6502_Opcodes_Table.png
-
-DATA_ASM2ADRESSING:
-	; 0:      
-	; 1:#00   
-	; 2:00; 0000
-	; 3:00,x  
-	; 4:00,y
-	; 5:0000,x  
-	; 6:0000,y
-	; 7:(00,x); (00),y
-	; ※ JMP:%10000000 と JSR:%00000000 はプログラム中で特別に扱う
-	.db %11101110, %01010110, %00101110, %11101100 ; LDA,LDX,LDY,STA
-	.db %00010100, %00001100, %00000001, %00000001 ; STX,STY,TXA,TYA
-	.db %00000001, %00000001, %00000001, %00000001 ; TXS,TAX,TAY,TSX
-	.db %00000001, %00000001, %00000001, %00000001 ; PHA,PHP,PLA,PLP
-
-	.db %11101110, %11101110, %11101110, %11101110 ; AND,ORA,EOR,ADC
-	.db %11101110, %00011101, %00011101, %00011101 ; SBC,ASL,LSR,ROL
-	.db %00011101, %00011100, %00000001, %00000001 ; ROR,INC,INX,INY
-	.db %00011100, %00000001, %00000001, %11101110 ; DEC,DEX,DEY,CMP
-
-	.db %00000110, %00000110, %00000100, %10000000 ; CPX,CPY,BIT,JMP
-	.db %00000000, %00000001, %00000000, %00000001 ; JSR,RTS,BRK,RTI
-	.db %00000001, %00000001, %00000001, %00000001 ; BNE,BEQ,BPL,BMI
-	.db %00000001, %00000001, %00000001, %00000001 ; BCC,BCS,BVC,BVS
-
-	.db %00000001, %00000001, %00000001, %00000001 ; CLI,SEI,CLD,SED
-	.db %00000001, %00000001, %00000001, %00000001 ; CLC,SEC,CLV,NOP
-	.db %00000001                                  ; ???
 
 ;*****************************************************************************;
 ; https://www.wizforest.com/tech/Z80vs6502/;p1#LoopAdd
