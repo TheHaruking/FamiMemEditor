@@ -363,49 +363,105 @@ MoveCursor:		;_x, _y の変更
 
 ChangeBaseAddr:
 	;
-	; base アドレスの変更
+	; RESERVE!
 	lda _pad1+1
 	and #pad_Down
-	beq ++
-		ADD_16 _base, #$40
-	++
+	beq +
+		; 
+	+
+	;
+	; RESERVE!
 	lda _pad1+1
 	and #pad_Up
-	beq ++
-		SUB_16 _base, #$40		
-	++
+	beq +
+		;
+	+
 	;
 	; base アドレスの変更 (プリセット)
 	lda _pad1+1
 	and #pad_Left
-	beq ++
-		inc _base_preset_n
-		lda _base_preset_n
-		cmp #3
-		bmi +
-			lda #0
-			sta _base_preset_n
-		+
-		lda _base_preset_n
-		tax
-		lda #$00
-		sta _base
-		lda DATA_ChangeBaseAddr_Preset, x
-		sta _base+1
-	++
+	beq +
+		jsr ChangeBaseAddrMode
+	+
 	;
 	; ASM 入力へ移行
 	lda _pad1+1
 	and #pad_Right
-	beq ++
+	beq +
 		lda #1
 		sta _is_AsmEdit
 		jsr AsmEdit
-	++
+	+
 	rts
 
-DATA_ChangeBaseAddr_Preset:
-	.dh $0000, $6000, $8000 ; 下バイトは全部 $00 なので、上だけで良い.
+ChangeBaseAddrMode:
+	;
+	; 一時的にスプライトを変更
+	lda #$D9 ; →
+	sta MEM_SP0+1
+	lda #0
+	sta MEM_SP0+3
+	lda #30
+	sta MEM_SP0+0
+	-
+		jsr GetJoyPad
+		lda _pad1+1
+		and #pad_B
+		beq +
+			jmp +end
+		+
+
+		lda _pad1+1
+		and #pad_Right
+		beq +
+			inc _base_preset_n
+		+
+		lda _pad1+1
+		and #pad_Left
+		beq +
+			dec _base_preset_n
+		+
+		;
+		; base アドレスの変更
+		lda _pad1+1
+		and #pad_Down
+		beq ++
+			ADD_16 _base, #$40
+		++
+		lda _pad1+1
+		and #pad_Up
+		beq ++
+			SUB_16 _base, #$40		
+		++
+
+		SET_ARGS _base_preset_n, #0, #11
+		jsr InRange
+
+		lda _pad1+1
+		and #pad_Right | #pad_Left
+		beq +
+			lda _base_preset_n
+			tax
+			lda #$00
+			sta _base
+			lda DATA_ChangeBaseAddr_Preset, x
+			sta _base+1
+		+
+		;
+		; 描画
+		SET_SRCA_PTR _base
+		jsr Draw_MemoryViewer
+	jmp -
+	+end
+	lda #$09 ; →
+	sta MEM_SP0+1
+	rts
+
+DATA_ChangeBaseAddr_Preset: ; 下バイトは全部 $00 なので、上だけで良い.
+	.db >$0000, >$0400
+	.db >$6000, >$6400, >$6800, >$6C00
+	.db >$7000, >$7400, >$7800, >$7C00
+	.db >$8000
 
 Exec: ; 実行
 	;
@@ -677,57 +733,34 @@ AsmEditEngine:
 		sta _is_AsmEdit
 	+
 
-	lda _pad1+1
-	and #pad_Down
-	beq +
-		inc _asm_y
-	+
-	lda _pad1+1
-	and #pad_Up
-	beq +
-		dec _asm_y
-	+
-	lda _pad1+1
-	and #pad_Right
-	beq +
-		inc _asm_x
-	+
-	lda _pad1+1
-	and #pad_Left
-	beq +
-		dec _asm_x
-	+
-	;
-	; 正規化
-	lda _asm_y
-	cmp #0
-	bpl +
-		lda #12
-	+
-	cmp #13
-	bmi +
-		lda #0
-	+
-	sta _asm_y
+	-retry
+		lda _pad1+1
+		and #pad_Down
+		beq +
+			inc _asm_y
+		+
+		lda _pad1+1
+		and #pad_Up
+		beq +
+			dec _asm_y
+		+
+		lda _pad1+1
+		and #pad_Right
+		beq +
+			inc _asm_x
+		+
+		lda _pad1+1
+		and #pad_Left
+		beq +
+			dec _asm_x
+		+
+		;
+		; 正規化
+		SET_ARGS _asm_y, #0, #13
+		jsr InRange
+		SET_ARGS _asm_x, #0, #6
+		jsr InRange
 
-	lda _asm_x
-	cmp #0
-	bpl +
-		lda #5
-	+
-	cmp #6
-	bmi +
-		lda #0
-	+
-	sta _asm_x
-
-	jsr AsmEditEngine_CalcCursor
-
-	;
-	; 決定
-	lda _pad1+1
-	and #pad_A
-	beq +
 		;
 		; _asm_x * 13
 		lda _asm_x
@@ -739,13 +772,26 @@ AsmEditEngine:
 		lda DATA_ASMEDIT_LIST, x
 		sta _asm_id
 		;
-		; ???? の場合 スキップ
+		; カーソル位置が不明箇所だった場合、もう一回移動
+		cmp #ID____
+	beq -retry
+
+	jsr AsmEditEngine_CalcCursor
+
+	;
+	; 決定
+	lda _pad1+1
+	and #pad_A
+	beq +
+		lda _asm_id
+		;
+		; ???? の場合 スキップ (万が一用)
 		cmp #ID____
 		beq +
 
 		tax
-		lda DATA_ASM2ADRESSING, x
-		cmp #%00000001
+		lda DATA_ASMISONE, x
+		cmp #1
 		bne ++
 			lda DATA_ASMID2CODE_and_TBL, x
 			ldy #0
@@ -801,34 +847,25 @@ DATA_ASMEDIT_LIST: ; 13 * 6
 	.db ID_JMP, ID_JSR, ID_BRK, ID____, ID_BEQ, ID_BMI, ID_BCS, ID_BVS, ID____, ID_SEI, ID_SED, ID_SEC, ID____
 	.db ID____, ID_RTS, ID_RTI, ID____, ID_BNE, ID_BPL, ID_BCC, ID_BVC, ID____, ID_CLI, ID_CLD, ID_CLC, ID_CLV
 
-DATA_ASM2ADRESSING:
-	; 0:      
-	; 1:#00   
-	; 2:00; 0000
-	; 3:00,x  
-	; 4:00,y
-	; 5:0000,x  
-	; 6:0000,y
-	; 7:(00,x); (00),y
-	; ※ JMP:%10000000 と JSR:%00000000 はプログラム中で特別に扱う
-	.db %11101110, %01010110, %00101110, %11101100 ; LDA,LDX,LDY,STA
-	.db %00010100, %00001100, %00000001, %00000001 ; STX,STY,TXA,TYA
-	.db %00000001, %00000001, %00000001, %00000001 ; TXS,TAX,TAY,TSX
-	.db %00000001, %00000001, %00000001, %00000001 ; PHA,PHP,PLA,PLP
+DATA_ASMISONE:
+	.db 0, 0, 0, 0 ; LDA,LDX,LDY,STA
+	.db 0, 0, 1, 1 ; STX,STY,TXA,TYA
+	.db 1, 1, 1, 1 ; TXS,TAX,TAY,TSX
+	.db 1, 1, 1, 1 ; PHA,PHP,PLA,PLP
 
-	.db %11101110, %11101110, %11101110, %11101110 ; AND,ORA,EOR,ADC
-	.db %11101110, %00011101, %00011101, %00011101 ; SBC,ASL,LSR,ROL
-	.db %00011101, %00011100, %00000001, %00000001 ; ROR,INC,INX,INY
-	.db %00011100, %00000001, %00000001, %11101110 ; DEC,DEX,DEY,CMP
+	.db 0, 0, 0, 0 ; AND,ORA,EOR,ADC
+	.db 0, 0, 0, 0 ; SBC,ASL,LSR,ROL
+	.db 0, 0, 1, 1 ; ROR,INC,INX,INY
+	.db 0, 1, 1, 0 ; DEC,DEX,DEY,CMP
 
-	.db %00000110, %00000110, %00000100, %10000000 ; CPX,CPY,BIT,JMP
-	.db %00000001, %00000001, %00000001, %00000001 ; JSR,RTS,BRK,RTI
-	.db %00000001, %00000001, %00000001, %00000001 ; BEQ,BNE,BMI,BPL
-	.db %00000001, %00000001, %00000001, %00000001 ; BCS,BCC,BVS,BVC
+	.db 0, 0, 0, 0 ; CPX,CPY,BIT,JMP
+	.db 1, 1, 1, 1 ; JSR,RTS,BRK,RTI
+	.db 1, 1, 1, 1 ; BEQ,BNE,BMI,BPL
+	.db 1, 1, 1, 1 ; BCS,BCC,BVS,BVC
 
-	.db %00000001, %00000001, %00000001, %00000001 ; SEI,CLI,SED,CLD
-	.db %00000001, %00000001, %00000001, %00000001 ; SEC,CLC,CLV,NOP
-	.db %00000000                                  ; ???
+	.db 1, 1, 1, 1 ; SEI,CLI,SED,CLD
+	.db 1, 1, 1, 1 ; SEC,CLC,CLV,NOP
+	.db 0          ; ???
 
 DATA_ASMID2CODE_and_TBL:
 	.db   0,   1,   2,   3
@@ -888,7 +925,24 @@ AsmEditAdressing:
 	tax
 	lda Mul11_tbl, x
 	sta _asm_adr_idx
+	-retry
+		;
+		; 正規化
+		SET_ARGS _asm_adr_y, #0, #11
+		jsr InRange
 
+		;
+		; 不明 ADR だった場合、移動
+		lda _asm_adr_idx
+		clc
+		adc _asm_adr_y
+		tax
+		lda DATA_ASMADRESSINGID2CODE, x
+		bne +
+
+		inc _asm_adr_y
+	jmp -retry
+	+
 	;
 	; 画面初期化
 	SET_ARGS MEM_BG0, DATA_ASMEDIT_INIT, #16
@@ -980,30 +1034,30 @@ AsmEditAdressingEngine:
 		lda #1 ; キャンセル時は 1
 		sta _is_AsmEdit
 	+
-	;
-	;
-	lda _pad1+1
-	and #pad_Down
-	beq +
-		inc _asm_adr_y
-	+
-	lda _pad1+1
-	and #pad_Up
-	beq +
-		dec _asm_adr_y
-	+
-	;
-	; 正規化
-	lda _asm_adr_y
-	cmp #0
-	bpl +
-		lda #10
-	+
-	cmp #11
-	bmi +
-		lda #0
-	+
-	sta _asm_adr_y
+	
+	-retry
+		lda _pad1+1
+		and #pad_Down
+		beq +
+			inc _asm_adr_y
+		+
+		lda _pad1+1
+		and #pad_Up
+		beq +
+			dec _asm_adr_y
+		+
+		;
+		; 正規化
+		SET_ARGS _asm_adr_y, #0, #11
+		jsr InRange
+		;
+		; 不明 ADR だった場合、再度移動
+		lda _asm_adr_idx
+		clc
+		adc _asm_adr_y
+		tax
+		lda DATA_ASMADRESSINGID2CODE, x
+	beq -retry
 	;
 	; A
 	lda _pad1+1
@@ -1183,9 +1237,9 @@ DATA_Register: ; 横幅 19
 DATA_HELP
 	.db 4	; 行数 (DrawXLines で使用. memcpy16 に渡す際は *2 すること！)
 	;.!hira "Ａ＋じゅうじ：かーそるいどう　　Ｂ＋じゅうじ：あどれすへんこう　"
-	.db $d4,$2b,$d8,$d9,$da,$db,$3a,$8b,$2d,$9d,$cb,$84,$a9,$86,$00,$00,$d7,$2b,$da,$db,$3a,$af,$d3,$84,$97,$a6,$84,$26,$93,$b4,$2d,$00
-	.db $d5,$2b,$d8,$d9,$00,$00,$3a,$ba,$2d,$98,$84,$a9,$86,$00,$00,$00,$d7,$2b,$d9,$00,$3a,$ba,$2d,$99,$a8,$00,$00,$00,$00,$00,$00,$00
-	.db $7f,$2b,$d4,$d5,$00,$00,$3a,$ab,$c5,$86,$ca,$c7,$8f,$00,$00,$00,$d6,$00,$00,$00,$3a,$98,$a3,$93,$86,$00,$00,$00,$00,$00,$00,$00
+	.db $d4,$2b,$7f,$00,$3a,$8b,$2d,$9d,$cb,$84,$a9,$86,$00,$00,$00,$00,$d7,$2b,$da,$db,$3a,$af,$d3,$84,$97,$a6,$84,$26,$93,$b4,$2d,$00
+	.db $d5,$2b,$d8,$00,$3a,$ba,$2d,$98,$84,$a9,$86,$c2,$2d,$a9,$00,$00,$d7,$2b,$d9,$00,$3a,$ba,$2d,$99,$a8,$00,$00,$00,$00,$00,$00,$00
+	.db $7f,$2b,$d4,$d5,$3a,$ab,$c5,$86,$ca,$c7,$8f,$00,$00,$00,$00,$00,$d6,$00,$00,$00,$3a,$98,$a3,$93,$86,$00,$00,$00,$00,$00,$00,$00
 	.db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
 
 ; _SRCA_ : 表示させたいメモリ領域の先頭アドレス
