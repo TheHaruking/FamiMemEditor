@@ -45,15 +45,14 @@
 	_asm_x 		= $C2	; 6
 	_asm_y 		= $C3	; 13
 	_asm_adr_y 	= $C4
-	_asm_adr_ptr = $C5
-	_asm_adr_ptr1 = $C6
+	_asm_adr_idx = $C5
 	
 	; $F0-$FF : 汎用
 
 ; $0200-$4FF
 ;	SPBUF[$100], BGBUF[$200]
 ; $0500
-	_copy_buf	= $700 ; $700-$73F
+	_copy_buf	= $500 ; $500-$53F
 ; $0600
 ;	(未使用)
 ; $0700
@@ -733,7 +732,7 @@ AsmEditEngine:
 		; _asm_x * 13
 		lda _asm_x
 		tax
-		lda DATA_Mulx13_Tbl, x
+		lda Mul13_tbl, x
 		clc
 		adc _asm_y
 		tax
@@ -801,10 +800,6 @@ DATA_ASMEDIT_LIST: ; 13 * 6
 	.db ID_ORA, ID____, ID_SBC, ID____, ID_LSR, ID_ROR, ID____, ID_DEC, ID_DEX, ID_DEY, ID____, ID_CPX, ID_CPY
 	.db ID_JMP, ID_JSR, ID_BRK, ID____, ID_BEQ, ID_BMI, ID_BCS, ID_BVS, ID____, ID_SEI, ID_SED, ID_SEC, ID____
 	.db ID____, ID_RTS, ID_RTI, ID____, ID_BNE, ID_BPL, ID_BCC, ID_BVC, ID____, ID_CLI, ID_CLD, ID_CLC, ID_CLV
-DATA_ASMEDIT_LIST_tbl:
-	.dw DATA_ASMEDIT_LIST, DATA_ASMEDIT_LIST+13, DATA_ASMEDIT_LIST+26, DATA_ASMEDIT_LIST+39, DATA_ASMEDIT_LIST+52, DATA_ASMEDIT_LIST+65
-DATA_Mulx13_Tbl: ; perl -e 'for(0..5){ print $_*13, ", ";}'
-	.db 0, 13, 26, 39, 52, 65
 
 DATA_ASM2ADRESSING:
 	; 0:      
@@ -855,7 +850,7 @@ DATA_ASMID2CODE_and_TBL:
 	.db $38, $18, $B8, $EA
 	.db $00
 
-DATA_ASMADRESSINGID2CODE: ; 22行
+DATA_ASMADRESSINGID2CODE: ; 11x22行
 	;         #    0    $   0,x  0,y  $,x  $,y  (0x) (0)y  ($)
 	.db   0, $A9, $A5, $AD, $B5,   0, $BD, $B9, $A1, $B1,   0 ; LDA
 	.db   0, $A2, $A6, $AE,   0, $B6,   0, $BE,   0,   0,   0 ; LDX
@@ -879,16 +874,6 @@ DATA_ASMADRESSINGID2CODE: ; 22行
 	.db   0, $C0, $C4, $CC,   0,   0,   0,   0,   0,   0,   0 ; CPY
 	.db   0,   0, $24, $2C,   0,   0,   0,   0,   0,   0,   0 ; BIT
 	.db   0,   0,   0, $4C,   0,   0,   0,   0,   0,   0, $6C ; JMP
-DATA_ASMADRESSINGID2CODE_tbl:
-	.dw DATA_ASMADRESSINGID2CODE,    DATA_ASMADRESSINGID2CODE+11, DATA_ASMADRESSINGID2CODE+22, DATA_ASMADRESSINGID2CODE+33
-	.dw DATA_ASMADRESSINGID2CODE+44, DATA_ASMADRESSINGID2CODE+55, DATA_ASMADRESSINGID2CODE+66, DATA_ASMADRESSINGID2CODE+77
-	.dw DATA_ASMADRESSINGID2CODE+88, DATA_ASMADRESSINGID2CODE+99, DATA_ASMADRESSINGID2CODE+110, DATA_ASMADRESSINGID2CODE+121
-	.dw DATA_ASMADRESSINGID2CODE+132, DATA_ASMADRESSINGID2CODE+143, DATA_ASMADRESSINGID2CODE+154, DATA_ASMADRESSINGID2CODE+165
-	.dw DATA_ASMADRESSINGID2CODE+176, DATA_ASMADRESSINGID2CODE+187, DATA_ASMADRESSINGID2CODE+198, DATA_ASMADRESSINGID2CODE+209
-	.dw DATA_ASMADRESSINGID2CODE+220, DATA_ASMADRESSINGID2CODE+231
-	
-DATA_Mulx11_Tbl:
-	.db 0, 11, 22, 33, 44, 55, 66, 77, 88, 99, 110, 121, 132, 143, 154, 165, 176, 187, 198, 209, 220, 231
 ;
 ; _is_AsmEdit : 完了時 : 0, キャンセル時 : 1
 AsmEditAdressing:
@@ -900,12 +885,9 @@ AsmEditAdressing:
 	lda _asm_id
 	tax
 	lda DATA_ASMID2CODE_and_TBL, x
-	ASL_n 1
 	tax
-	lda DATA_ASMADRESSINGID2CODE_tbl, x
-	sta _asm_adr_ptr
-	lda DATA_ASMADRESSINGID2CODE_tbl+1, x
-	sta _asm_adr_ptr+1
+	lda Mul11_tbl, x
+	sta _asm_adr_idx
 
 	;
 	; 画面初期化
@@ -927,9 +909,9 @@ AsmEditAdressing:
 	SET_N #4
 
 	ldy #0
-	ldx #0
+	ldx _asm_adr_idx
 	-
-		lda (_asm_adr_ptr), y
+		lda DATA_ASMADRESSINGID2CODE, x
 		beq +
 			SET_N #4
 			jsr memcpy
@@ -943,6 +925,7 @@ AsmEditAdressing:
 		++
 		SET_N #32
 		jsr add_16_ADDR
+		inx
 		iny
 		cpy #11
 	bmi -
@@ -1026,8 +1009,11 @@ AsmEditAdressingEngine:
 	lda _pad1+1
 	and #pad_A
 	beq +
-		ldy _asm_adr_y
-		lda (_asm_adr_ptr), y
+		lda _asm_adr_idx
+		clc
+		adc _asm_adr_y
+		tax
+		lda DATA_ASMADRESSINGID2CODE, x
 		beq ++
 			ldy #0
 			sta (_curaddr), y
