@@ -8,6 +8,7 @@
 ### ■ 概要
 ファミコン用メモリエディタです。  
 入力した 16 進数を機械語としてそのまま実行する機能も備わっています。  
+FamiMemEditor.nes : 【[ダウンロード](https://github.com/TheHaruking/FamiMemEditor/releases/download/v2.0/FamiMemEditor.nes)】
 
 ### ■ 実行方法
 
