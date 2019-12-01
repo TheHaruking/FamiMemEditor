@@ -15,6 +15,8 @@ FamiMemEditor.nes : 【[ダウンロード](https://github.com/TheHaruking/FamiM
 **パソコンで実行** : ファミコンエミュレーター ([Mesen](https://www.mesen.ca/ja/) 等) を用いて FamiMemEditor.nes を開く  
 **レトロフリークで実行** : MicroSD に FamiMemEditor.nes を入れてメニューから起動
 
+> ※レトロフリークで実行時は、[出力設定] で [オーバースキャン] : ON に設定下さい。でないと、左端が途切れます。
+
 ### ■ 操作方法
 
 ※ [ ] は、"押しながら" を意味します。
