@@ -363,18 +363,22 @@ MoveCursor:		;_x, _y の変更
 
 ChangeBaseAddr:
 	;
-	; RESERVE!
+	; Base Addr +0x40!
 	lda _pad1+1
 	and #pad_Down
 	beq +
-		; 
+		ADD_16 _base, #$40
+		SET_SRCA_PTR _base
+		jsr Draw_MemoryViewer
 	+
 	;
-	; RESERVE!
+	; Base Addr -0x40!
 	lda _pad1+1
 	and #pad_Up
 	beq +
-		;
+		SUB_16 _base, #$40
+		SET_SRCA_PTR _base
+		jsr Draw_MemoryViewer
 	+
 	;
 	; base アドレスの変更 (プリセット)
